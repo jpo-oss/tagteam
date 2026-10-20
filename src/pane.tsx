@@ -3,13 +3,12 @@ import type { Io } from './io'
 import { localDay, when } from './session'
 import { listAccounts, loadUsage, readActive } from './store'
 import type { Tokens } from './types'
-import { effectivePercent } from './usage'
+import { effectivePercent, windowName } from './usage'
 
 export type Row = { label: string; email: string; active: boolean; state: string; windows: string[]; tokens: string; early?: string }
 
 const total = (t?: Tokens): number => (t ? t.input + t.output : 0)
 const short = (n: number): string => (n < 1000 ? String(n) : n < 1e6 ? `${(n / 1e3).toFixed(1)}k` : `${(n / 1e6).toFixed(1)}M`)
-const NAMES: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
 export async function paneRows(io: Io, now: number, threshold: number): Promise<Row[]> {
   const active = await readActive(io)
@@ -31,13 +30,13 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
     const windows = ws.map((w) => {
       const reset = Date.parse(w.resetsAt ?? '')
       const live = !Number.isNaN(reset) && reset > now
-      return `${NAMES[w.kind] ?? w.kind} ${Math.round(effectivePercent(w, now))}%${live ? ` resets ${when(reset, now)}` : ''}`
+      return `${windowName(w.kind)} ${Math.round(effectivePercent(w, now))}%${live ? ` resets ${when(reset, now)}` : ''}`
     })
     const last = Math.max(0, ...u.earlyResets.map((r) => r.at))
     rows.push({
       label: a.label, email: a.email, active: isActive, state,
       windows: windows.length ? windows : ['no reading yet'],
-      tokens: `tokens in/out today ${short(total(u.tokensByDay[days[0]!]))} · week ${short(days.reduce((s, d) => s + total(u.tokensByDay[d]), 0))}`,
+      tokens: `tokens in/out today ${short(total(u.tokensByDay[days[0]!]))}, week ${short(days.reduce((s, d) => s + total(u.tokensByDay[d]), 0))}`,
       early: last ? `last early reset ${when(last, now)}` : undefined,
     })
   }
@@ -46,8 +45,8 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
 
 type Parts = Pick<ElementTable, 'Box' | 'Text'>
 
-// Joins segments with " · " onto lines no wider than the pane; a lone segment that is still too wide is cut.
-export function wrapLine(segments: string[], columns: number, indent = '  ', sep = ' · '): string[] {
+// Joins segments with two spaces onto lines no wider than the pane; a lone segment that is still too wide is cut.
+export function wrapLine(segments: string[], columns: number, indent = '  ', sep = '  '): string[] {
   const lines: string[] = []
   let cur = ''
   for (const seg of segments) {

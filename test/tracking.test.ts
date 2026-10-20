@@ -45,7 +45,7 @@ test('session.measure stores the reading and shows status', async ($, on) => {
   const u = await usageOf(io)
   expect(u?.windows.five_hour?.percentUsed).toBe(42)
   expect(u?.windows.five_hour?.resetsAt).toBe(resetsAt)
-  expect(status).toEqual(['unmanaged · five_hour 42%'])
+  expect(status).toEqual(['unmanaged, 5h 42%'])
 })
 
 test('status uses the account label when managed', async ($, on) => {
@@ -57,7 +57,7 @@ test('status uses the account label when managed', async ($, on) => {
   const status: string[] = []
   on('ui.status', (_, e) => (status.push(String(e.text)), { value: undefined }))
   await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 61 }]))
-  expect(status).toEqual(['work · seven_day 61%'])
+  expect(status).toEqual(['work, 7d 61%'])
 })
 
 test('an early reset raises one toast naming the window', async ($, on) => {
@@ -71,7 +71,7 @@ test('an early reset raises one toast naming the window', async ($, on) => {
   expect(toasts).toEqual([])
   await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 3, resetsAt }]))
   expect(toasts.length).toBe(1)
-  expect(toasts[0]).toContain('five_hour')
+  expect(toasts[0]).toContain('5h')
   expect((await usageOf(io))?.earlyResets.length).toBe(1)
 })
 

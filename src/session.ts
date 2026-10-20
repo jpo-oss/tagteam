@@ -1,7 +1,7 @@
 import type { Io } from './io'
 import { listAccounts, loadUsage, saveUsage } from './store'
 import type { Account, Reading, Tokens } from './types'
-import { addTokens, applyReadings, effectivePercent } from './usage'
+import { addTokens, applyReadings, effectivePercent, windowName } from './usage'
 
 export type Ui = { toast(text: string): void; status(text: string): void }
 
@@ -42,7 +42,7 @@ const showStatus = async (io: Io, ui: Ui, uuid: string, windows: Record<string, 
     .sort((a, b) => b.pct - a.pct)[0]
   if (!top) return
   const label = labelFor(await listAccounts(io), uuid) ?? 'unmanaged'
-  ui.status(`${label} · ${top.kind} ${Math.round(top.pct)}%`)
+  ui.status(`${label}, ${windowName(top.kind)} ${Math.round(top.pct)}%`)
 }
 
 export const recordMeasure = async (io: Io, ui: Ui, readings: readonly Reading[]): Promise<void> => {
@@ -52,7 +52,7 @@ export const recordMeasure = async (io: Io, ui: Ui, readings: readonly Reading[]
   const { next, earlyResets } = applyReadings(await loadUsage(io, uuid), readings, now)
   await saveUsage(io, next)
   try {
-    for (const kind of earlyResets) ui.toast(`Your ${kind} usage window reset early`)
+    for (const kind of earlyResets) ui.toast(`Your ${windowName(kind)} usage window reset early`)
     await showStatus(io, ui, uuid, next.windows, now)
   } catch {
     // display only: the reading is already saved

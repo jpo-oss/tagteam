@@ -87,7 +87,7 @@ test('tokens count input and output only', async ($, on) => {
   await saveUsage(io, u)
   await setup($, on, io)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /today 120 /ui })).toBeTruthy()
+  expect(await ui.find({ type: 'Text', text: /today 120, week/u })).toBeTruthy()
   await ui.unmount()
 })
 
@@ -124,7 +124,7 @@ test('the empty state fits a narrow pane', async ($, on) => {
 test('the active account is marked and the empty state is told', async ($, on) => {
   await setup($, on, await seed())
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /a.*42%/ }))?.text).toMatch(/^● a/)
+  expect((await ui.find({ type: 'Text', text: /a.*42%/ }))?.text).toMatch(/^● a {2}a@x\.io {2}active {2}5h 42%/)
   expect((await ui.find({ type: 'Text', text: /b.*excluded/ }))?.text).toMatch(/^ {2}b/)
   await ui.unmount()
 })
