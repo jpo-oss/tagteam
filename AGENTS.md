@@ -4,7 +4,7 @@ tagteam is a Claude Code plugin plus a POSIX `sh` launcher that tracks usage acr
 
 ## Commands
 
-Same as CI. Run all of them before calling a change done.
+Run all of them before calling a change done. CI runs everything except `tsc`.
 
 ```sh
 claude plugin validate . --strict
@@ -12,9 +12,10 @@ claude plugin test .
 npx -p typescript@latest tsc -p .
 shellcheck -s sh bin/tagteam test/launcher.test.sh test/fake-claude
 sh test/launcher.test.sh
+TEST_SH=dash sh test/launcher.test.sh
 ```
 
-`tsc` needs the engine types at `.claude-plugin/types/claude-code/index.d.ts` (gitignored). See CONTRIBUTING.md.
+`tsc` is local only: it needs the engine types at `.claude-plugin/types/claude-code/index.d.ts` (gitignored), and Claude Code has no headless way to write them. See CONTRIBUTING.md.
 
 ## Layout
 
