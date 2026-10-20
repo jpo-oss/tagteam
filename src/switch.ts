@@ -51,7 +51,6 @@ export function settingsFrom(o: PluginOptions): Settings {
   return {
     autoSwitch: o.autoSwitch === true,
     threshold: Math.min(100, Math.max(50, num(o.threshold, 95))),
-    stallTimeoutSeconds: Math.max(1, num(o.stallTimeoutSeconds, 30)),
   }
 }
 
@@ -115,7 +114,7 @@ export async function commit(ctx: SwitchCtx): Promise<void> {
     await writeSwitchRequest(io, {
       run, session, targetLabel: p.target.label, targetDir: p.target.dir,
       resumeAt: p.resumeAt === undefined ? undefined : Math.ceil(p.resumeAt / 1000),
-      reason: p.reason, handover: handover(p.from, p.target.label, p.reason), stallSeconds: settings.stallTimeoutSeconds,
+      reason: p.reason, handover: handover(p.from, p.target.label, p.reason),
     })
   } catch (err) {
     state.planned = undefined

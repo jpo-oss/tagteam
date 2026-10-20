@@ -19,7 +19,7 @@ TEST_SH=dash sh test/launcher.test.sh
 
 ## Layout
 
-- `.claude-plugin/plugin.json`: manifest and the three settings (`autoSwitch`, `threshold`, `stallTimeoutSeconds`).
+- `.claude-plugin/plugin.json`: manifest and the two settings (`autoSwitch`, `threshold`).
 - `hooks/register.ts`: wires engine events and the `/tagteam` command to `src/`.
 - `src/usage.ts`, `src/pick.ts`, `src/appstate.ts`: pure logic, no I/O.
 - `src/io.ts`: the `Io` port. File, process and env access goes through it, never through `$` directly. UI, command and plugin calls use `$`.
@@ -50,7 +50,7 @@ TEST_SH=dash sh test/launcher.test.sh
 - Never read, copy, store or move login tokens, `.credentials.json` contents or keychain entries. Sign-in only happens through `claude auth login` with `CLAUDE_CONFIG_DIR` set.
 - Never write `~/.claude.json` or anything inside `~/.claude`. Reading is fine.
 - Never call `$.command.run` inside a `command.run` hook; the engine refuses it. Schedule it with `$.clock.after`.
-- Switches are written at turn end, not mid-turn, so the launcher's stall timer can't cut a turn short.
+- Switches are written at turn end, not mid-turn, so the launcher's stall timer (`TAGTEAM_STALL`, 30 s) can't cut a turn short.
 - Tests use temp dirs or memory. Never point a test at a real home folder.
 
 ## Don'ts

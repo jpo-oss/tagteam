@@ -62,13 +62,13 @@ test('switch request file has the exact lines', async () => {
   const { io, root } = await fresh()
   await writeSwitchRequest(io, {
     run: 'r1', session: 's1', targetLabel: 'b', targetDir: '/d/b', resumeAt: 1700000000,
-    reason: 'five_hour\nat 96', handover: 'line one\r\nline two', stallSeconds: 30,
+    reason: 'five_hour\nat 96', handover: 'line one\r\nline two',
   })
   expect(await io.read(`${root}/state/switch-r1`)).toBe(
-    'session=s1\ntarget_label=b\ntarget_dir=/d/b\nresume_at=1700000000\nreason=five_hour at 96\nhandover=line one line two\nstall=30\n',
+    'session=s1\ntarget_label=b\ntarget_dir=/d/b\nresume_at=1700000000\nreason=five_hour at 96\nhandover=line one line two\n',
   )
   await writeSwitchRequest(io, {
-    run: 'r2', session: 's', targetLabel: 'b', targetDir: '/d/b', reason: 'r', handover: 'h', stallSeconds: 5,
+    run: 'r2', session: 's', targetLabel: 'b', targetDir: '/d/b', reason: 'r', handover: 'h',
   })
   expect(await io.read(`${root}/state/switch-r2`)).toContain('resume_at=\n')
 })

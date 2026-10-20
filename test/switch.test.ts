@@ -50,7 +50,7 @@ const fakeUi = (answer?: () => Promise<string>, turns = 1): { ui: SwitchUi; call
   }
   return { ui, calls }
 }
-const SETTINGS: Settings = { autoSwitch: true, threshold: 95, stallTimeoutSeconds: 30 }
+const SETTINGS: Settings = { autoSwitch: true, threshold: 95 }
 const ctx = (io: Io, ui: SwitchUi, over: Partial<Settings> = {}): SwitchCtx =>
   ({ io, ui, state: newState(), settings: { ...SETTINGS, ...over } })
 const request = async (io: Io, run = 'r1') => {
@@ -64,7 +64,7 @@ test('auto on: switches to the fresh account, copies trust and tells the user on
   const c = ctx(io, ui)
   await evaluate(c, Date.now())
   const r = await request(io)
-  expect(r).toMatchObject({ session: 's1', target_label: 'b', target_dir: '/t/b', resume_at: '', stall: '30' })
+  expect(r).toMatchObject({ session: 's1', target_label: 'b', target_dir: '/t/b', resume_at: '' })
   expect(r?.handover).toContain('b')
   expect(await readActive(io)).toBe('b')
   expect(calls.toasts).toEqual(['Switched from a (95% 5h) to b (8%)'])
@@ -358,9 +358,9 @@ test('handover names both accounts and the reason, resumes only what was running
 })
 
 test('settingsFrom applies defaults and clamps the threshold', () => {
-  expect(settingsFrom({})).toEqual({ autoSwitch: false, threshold: 95, stallTimeoutSeconds: 30 })
-  expect(settingsFrom({ autoSwitch: true, threshold: 20, stallTimeoutSeconds: 5 })).toEqual({
-    autoSwitch: true, threshold: 50, stallTimeoutSeconds: 5,
+  expect(settingsFrom({})).toEqual({ autoSwitch: false, threshold: 95 })
+  expect(settingsFrom({ autoSwitch: true, threshold: 20 })).toEqual({
+    autoSwitch: true, threshold: 50,
   })
 })
 

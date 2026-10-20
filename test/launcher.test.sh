@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.." || exit 1
 repo=$(pwd)
 fails=0
 tmp=$(mktemp -d)
+unset TAGTEAM_STALL
 trap 'rm -rf "$tmp"' EXIT
 
 setup() {
@@ -75,7 +76,7 @@ echo "$case_dir/A" > "$case_dir/home/state/active-dir"
 echo switch > "$case_dir/fake/mode-1"
 # shellcheck disable=SC2016 # literal on purpose: the launcher must not expand it
 handover='Don'"'"'t stop: "go" $(touch pwned) `touch pwned` * ok'
-printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nreason=limit\nhandover=%s\nstall=30\n' "$case_dir/B" "$handover" > "$case_dir/fake/switch"
+printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nreason=limit\nhandover=%s\n' "$case_dir/B" "$handover" > "$case_dir/fake/switch"
 launch; code=$?
 it 'switch file consumed and second exit code returned'
 if [ "$code" = 0 ] && runs 2 && no_leftovers; then pass; else fail; fi
@@ -154,7 +155,7 @@ launch_args=
 
 setup no-conversation
 echo switch > "$case_dir/fake/mode-1"
-printf 'session=\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=30\n' "$case_dir/B" > "$case_dir/fake/switch"
+printf 'session=\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
 launch; code=$?
 it 'a switch with no conversation starts claude fresh on the target with the original args'
 if [ "$code" = 0 ] && runs 2 && [ "$(field 2 cfg)" = "$case_dir/B" ] && args_are 2 --model opus && no_leftovers; then pass; else fail; fi
@@ -162,7 +163,7 @@ if [ "$code" = 0 ] && runs 2 && [ "$(field 2 cfg)" = "$case_dir/B" ] && args_are
 setup resume-fails
 echo switch > "$case_dir/fake/mode-1"
 echo 'exit 1' > "$case_dir/fake/mode-2"
-printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=30\n' "$case_dir/B" > "$case_dir/fake/switch"
+printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
 launch; code=$?
 it 'a resume that fails at once is followed by one fresh start on the target'
 if [ "$code" = 0 ] && runs 3 && args_are 2 --resume s1 go --model opus && args_are 3 --model opus &&
@@ -193,17 +194,20 @@ launch TAGTEAM_STALL=1
 it 'stalled claude gets SIGTERM within 3s and relaunch follows'
 if [ -s "$case_dir/fake/signals" ] && [ "$(elapsed)" -le 3 ] && [ "$(field 2 cfg)" = "$case_dir/B" ]; then pass; else fail; fi
 
-setup stall-from-file
+setup stall-default
+# shellcheck disable=SC2016 # literal on purpose: the stub sleep expands these when it runs
+printf '#!/bin/sh\necho "$1" >> "$FAKE_DIR/sleeps"\n[ "$1" = 30 ] && exit 0\nexec /bin/sleep "$@"\n' > "$case_dir/bin/sleep"
+chmod +x "$case_dir/bin/sleep"
 echo hang > "$case_dir/fake/mode-1"
-printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=1\n' "$case_dir/B" > "$case_dir/fake/switch"
-launch TAGTEAM_STALL=60
-it 'stall in the switch file wins over TAGTEAM_STALL'
-if [ -s "$case_dir/fake/signals" ] && [ "$(elapsed)" -le 3 ]; then pass; else fail; fi
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch
+it 'without TAGTEAM_STALL the launcher waits 30 seconds'
+if grep -qx 30 "$case_dir/fake/sleeps" && [ -s "$case_dir/fake/signals" ]; then pass; else fail; fi
 
 setup stubborn
 echo stubborn > "$case_dir/fake/mode-1"
-printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=1\n' "$case_dir/B" > "$case_dir/fake/switch"
-launch
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch TAGTEAM_STALL=1
 it 'claude that ignores SIGTERM gets SIGKILL 10s later and the relaunch follows'
 if grep -q term "$case_dir/fake/signals" && ! grep -q survived "$case_dir/fake/signals" &&
   [ "$(elapsed)" -ge 11 ] && [ "$(elapsed)" -le 14 ] && [ "$(field 2 cfg)" = "$case_dir/B" ]; then pass; else fail; fi

@@ -11,12 +11,12 @@ export type Account = {
   label: string; dir: string; accountUuid: string; email: string
   order: number; excluded: boolean; needsSignIn: boolean
 }
-export type Settings = { autoSwitch: boolean; threshold: number; stallTimeoutSeconds: number }
+export type Settings = { autoSwitch: boolean; threshold: number }
 export type Pick =
   | { kind: 'switch'; label: string }
   | { kind: 'wait'; label: string; resumeAt: number }
   | { kind: 'none' }
 export type SwitchRequest = {
   run: string; session: string; targetLabel: string; targetDir: string
-  resumeAt?: number; reason: string; handover: string; stallSeconds: number
+  resumeAt?: number; reason: string; handover: string
 }

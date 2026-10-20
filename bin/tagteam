@@ -56,8 +56,8 @@ watch() {
   trap '' INT
   trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 0' TERM
   while [ ! -f "$switch_file" ]; do pause 1; done
-  stall=$(value stall)
-  case $stall in '' | *[!0-9]*) stall=${TAGTEAM_STALL:-30} ;; esac
+  stall=${TAGTEAM_STALL:-30}
+  case $stall in '' | *[!0-9]*) stall=30 ;; esac
   pause "$stall"
   for pid in $(pgrep -P "$$"); do
     is_claude "$pid" || continue
