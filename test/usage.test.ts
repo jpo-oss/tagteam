@@ -32,7 +32,7 @@ test('a drop after the scheduled reset is not early', async () => {
 test('a window missing from a reading is kept', async () => {
   const prev = { ...emptyUsage('u'), windows: { seven_day: { ...win(50, '2026-10-23T00:00:00Z'), kind: 'seven_day' } } }
   const r = applyReadings(prev, [{ kind: 'five_hour', percentUsed: 1 }], now)
-  expect(r.next.windows.seven_day.percentUsed).toBe(50)
+  expect(r.next.windows.seven_day?.percentUsed).toBe(50)
 })
 
 test('effectivePercent is 0 once the window has reset', async () => {

@@ -1,5 +1,7 @@
 import type { Io, RunResult } from '../../src/io'
 
+declare const setTimeout: (fn: () => void, ms: number) => unknown
+
 // In-memory stand-in for the engine: `claude plugin test` gives a test no disk,
 // no process and no Node/Bun globals. Emulates only what store.ts runs.
 export const memoryIo = (env: Record<string, string> = {}): Io => {

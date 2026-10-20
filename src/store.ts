@@ -72,7 +72,7 @@ export const writeActive = async (io: Io, a: Account): Promise<void> => {
 }
 
 export const writeSwitchRequest = async (io: Io, r: SwitchRequest): Promise<void> => {
-  const lines = [
+  const lines: [string, string][] = [
     ['session', r.session],
     ['target_label', r.targetLabel],
     ['target_dir', r.targetDir],
