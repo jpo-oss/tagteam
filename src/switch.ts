@@ -213,7 +213,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   if (!settings.autoSwitch) {
     const question = resumeAt === undefined
       ? `${said}. Switch to ${to}?`
-      : `${said} and every other account is limited too. Close now and resume on ${target.label} at ${when(resumeAt, now)}?`
+      : `${said} and every other account is limited too. Close now and resume on ${target.label} ${when(resumeAt, now)}?`
     if (!(await decide(ctx, uuid, w, question, now)) || busy(state)) return
   }
   await requestSwitch(ctx, {
@@ -221,7 +221,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
     reason: `${current.label} reached ${pct}% of its ${name} limit`,
     toast: resumeAt === undefined
       ? `Switched from ${current.label} (${pct}% ${name}) to ${to}`
-      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} at ${when(resumeAt, now)}`,
+      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} ${when(resumeAt, now)}`,
   })
 }
 

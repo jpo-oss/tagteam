@@ -6,7 +6,6 @@ import type { Io } from '../src/io'
 import { runCommand, type Deps } from '../src/commands'
 import { readActive, saveAccount, saveUsage, snoozed } from '../src/store'
 import { evaluate, handover, manualSwitch, newState, scheduleExit, settingsFrom, turnEnded, type SwitchCtx, type SwitchUi } from '../src/switch'
-import { localDay } from '../src/session'
 import type { Account, Settings } from '../src/types'
 
 declare const setTimeout: (fn: () => void, ms: number) => unknown
@@ -308,14 +307,14 @@ test('a session does not follow an excluded active account', async () => {
   expect(await request(io)).toBeUndefined()
 })
 
-test('a resume time on another day shows the date', async () => {
+test('a resume time on another day shows the weekday', async () => {
   const io = await setup()
   const far = Date.now() + 3 * 86400_000
   await setPct(io, 'ua', 96, new Date(far).toISOString())
   await setPct(io, 'ub', 99, new Date(far + 3600_000).toISOString())
   const { ui, calls } = fakeUi()
   await evaluate(ctx(io, ui), Date.now())
-  expect(calls.toasts[0]).toContain(localDay(far))
+  expect(calls.toasts[0]).toMatch(/resumes on a (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
 })
 
 test('when every account is limited it waits for the soonest reset', async () => {
