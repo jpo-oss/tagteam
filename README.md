@@ -53,7 +53,7 @@ Claude Code doesn't auto-update plugins from third-party marketplaces like this 
    /tagteam status
    ```
 
-   ![The tagteam dashboard pane beside a chat, listing each account with its 5-hour and weekly usage, reset times and tokens](docs/images/dashboard.png)
+   ![The tagteam dashboard beside a chat: one bordered card per account with 5-hour and weekly usage bars, reset times and tokens, the active account highlighted](docs/images/dashboard.png)
 
 4. When the account you're on reaches the threshold, tagteam asks whether to switch. Say yes and the session closes and reopens on the account with the most room. With auto switch on, it switches without asking and tells you.
 
