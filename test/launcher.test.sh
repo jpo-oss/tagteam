@@ -13,11 +13,23 @@ setup() {
   : > "$case_dir/fake/log"
 }
 
+# launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
 launch() {
   (
     unset CLAUDE_CONFIG_DIR
-    env PATH="$case_dir/bin:$PATH" TAGTEAM_HOME="$case_dir/home" FAKE_DIR="$case_dir/fake" \
-      "$@" "${TEST_SH:-sh}" "$repo/bin/tagteam" --model opus </dev/null >"$case_dir/out" 2>&1
+    for kv in "$@"; do export "${kv?}"; done
+    export PATH="$case_dir/bin:$PATH" TAGTEAM_HOME="$case_dir/home" FAKE_DIR="$case_dir/fake"
+    if [ -n "$launch_lines" ]; then
+      IFS='
+'
+      set -f
+      # shellcheck disable=SC2086
+      set -- $launch_lines
+    else
+      # shellcheck disable=SC2086
+      set -- ${launch_args:---model opus}
+    fi
+    "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" </dev/null >"$case_dir/out" 2>&1
   )
 }
 
@@ -73,6 +85,72 @@ it 'handover with quotes, globs and substitutions arrives as one unchanged argum
 if [ "$(sed -n 3p "$case_dir/fake/args-2")" = "$handover" ] && [ ! -e pwned ] && [ ! -e "$case_dir/pwned" ]; then pass; else fail; fi
 it 'relaunch rewrites the run file'
 if line 2 | grep -q "runfile=dir=$case_dir/B pid="; then pass; else fail; fi
+
+check_dropped() {
+  setup "drops-$1"
+  echo 'switch' > "$case_dir/fake/mode-1"
+  printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+  launch_args="--dangerously-skip-permissions $2"
+  launch
+  it "relaunch drops $2"
+  if args_are 2 --resume s1 go --dangerously-skip-permissions; then pass; else fail; fi
+  launch_args=
+}
+check_dropped continue --continue
+check_dropped c -c
+check_dropped r-value '-r old'
+check_dropped resume-eq --resume=old
+check_dropped session-id '--session-id x'
+check_dropped fork --fork-session
+check_dropped resume-bare --resume
+check_dropped from-pr '--from-pr 12'
+
+check_dropped session-id-eq --session-id=x
+check_dropped from-pr-eq --from-pr=7
+check_dropped teleport --teleport
+check_dropped teleport-value '--teleport t1'
+check_dropped teleport-eq --teleport=t1
+
+setup after-dashdash
+echo 'switch' > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch_lines='--model
+opus
+-c
+--
+-c
+a b
+--resume'
+launch
+it 'args after -- are untouched and values with spaces survive'
+if args_are 2 --resume s1 go --model opus -- -c 'a b' --resume; then pass; else fail; fi
+launch_lines=
+
+setup spaces
+echo 'switch' > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch_lines='-p
+hello world
+--continue'
+launch
+it 'a value with spaces arrives as one argument'
+if args_are 2 --resume s1 go -p 'hello world'; then pass; else fail; fi
+launch_lines=
+
+setup keeps-order
+echo 'switch' > "$case_dir/fake/mode-1"
+printf 'session=\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch_args='--model opus -c --resume --effort high'
+launch
+it 'fresh relaunch drops session flags and keeps the rest in order'
+if args_are 2 --model opus --effort high; then pass; else fail; fi
+
+setup first-keeps
+launch_args='--continue --model opus'
+launch
+it 'first launch keeps --continue'
+if args_are 1 --continue --model opus; then pass; else fail; fi
+launch_args=
 
 setup no-conversation
 echo switch > "$case_dir/fake/mode-1"
