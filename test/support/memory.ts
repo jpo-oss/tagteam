@@ -5,7 +5,7 @@ declare const setTimeout: (fn: () => void, ms: number) => unknown
 // In-memory stand-in for the engine: `claude plugin test` gives a test no disk,
 // no process and no Node/Bun globals. Emulates only what store.ts runs.
 export const memoryIo = (env: Record<string, string> = {}): Io => {
-  const files = new Map<string, { text: string; mtime: number }>()
+  const files = new Map<string, { text: string; mtime: number; link?: string }>()
   const dirs = new Map<string, number>()
   const parent = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/'
   const mkdirs = (p: string) => {
@@ -46,6 +46,14 @@ export const memoryIo = (env: Record<string, string> = {}): Io => {
         for (const k of [...files.keys()].filter(under(p))) files.delete(k)
         for (const k of [...dirs.keys()].filter(under(p))) dirs.delete(k)
       }
+      return ok()
+    }
+    if (cmd === 'true') return ok()
+    if (cmd === 'ln') {
+      const [target, dest] = args as [string, string]
+      if (dirs.has(dest) && !files.has(dest)) return fail(`ln: ${dest}: is a directory`)
+      mkdirs(parent(dest))
+      files.set(dest, { text: '', mtime: Date.now(), link: target })
       return ok()
     }
     if (cmd === 'touch') {
