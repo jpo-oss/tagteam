@@ -96,6 +96,7 @@ If every account is limited, the launcher waits until the soonest reset and resu
 - State and logins are per machine. Each computer needs its own setup.
 - Whether an idle account's login stays valid for days is still being checked.
 - A step that was in flight when a session closed gets redone after the restart, and background commands are run again.
+- A switch keeps the whole visible conversation, but Claude can't reuse its earlier hidden thinking from another account. Claude Code shows a notice when this happens.
 
 ## License
 
