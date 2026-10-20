@@ -99,6 +99,14 @@ launch; code=$?
 it 'the fresh start is tried once, and its exit code is returned'
 if [ "$code" = 4 ] && runs 3; then pass; else fail; fi
 
+setup resume-interrupted
+echo switch > "$case_dir/fake/mode-1"
+echo 'exit 130' > "$case_dir/fake/mode-2"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch; code=$?
+it 'a resumed claude that quits at once with another code is not restarted'
+if [ "$code" = 130 ] && runs 2 && ! grep -q 'could not resume' "$case_dir/out" && no_leftovers; then pass; else fail; fi
+
 setup stall
 echo "$case_dir/A" > "$case_dir/home/state/active-dir"
 echo hang > "$case_dir/fake/mode-1"

@@ -23,7 +23,7 @@ Sessions outside the launcher (desktop app, IDE, plain `claude`) get tracking an
 
 ## Launcher
 
-`bin/tagteam` starts `claude` in the active account's folder and stays behind it. When Claude exits, it reads the session's switch request. With none, it exits with Claude's code. With one, it runs `claude --resume <session> <handover> <original args>` in the target folder. The handover tells Claude why it moved and to pick up interrupted subagents, workflows and background work without asking. A request with no session (nothing was said yet) starts a plain `claude <original args>` there instead, and so does a resume that fails within 10 seconds.
+`bin/tagteam` starts `claude` in the active account's folder and stays behind it. When Claude exits, it reads the session's switch request. With none, it exits with Claude's code. With one, it runs `claude --resume <session> <handover> <original args>` in the target folder. The handover tells Claude why it moved and to pick up interrupted subagents, workflows and background work without asking. A request with no session (nothing was said yet) starts a plain `claude <original args>` there instead, and so does a resume that exits with code 1 within 10 seconds.
 
 If Claude hasn't exited within the stall timeout after a request (for example on the limit menu), the launcher sends SIGTERM, then SIGKILL 10 seconds later. When every account is limited, the request carries a resume time and the launcher sleeps until then.
 

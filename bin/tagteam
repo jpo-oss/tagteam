@@ -91,8 +91,9 @@ while :; do
   stop_watcher
   rm -f "$run_file"
 
-  # A resume that fails at once (the conversation can't be found) gets one fresh start instead.
-  if [ -n "$session" ] && [ "$code" -ne 0 ] && [ ! -f "$switch_file" ] && [ $(($(date +%s) - started)) -lt 10 ]; then
+  # A resume that fails at once with 1 (the conversation can't be found) gets one
+  # fresh start instead. Other codes, like 130 from Ctrl-C, end the launcher as usual.
+  if [ -n "$session" ] && [ "$code" -eq 1 ] && [ ! -f "$switch_file" ] && [ $(($(date +%s) - started)) -lt 10 ]; then
     printf 'tagteam: could not resume the conversation, starting a new one on %s\n' "${label:-$dir}" >&2
     session=
     handover=
