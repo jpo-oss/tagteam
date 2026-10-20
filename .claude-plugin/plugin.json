@@ -5,7 +5,6 @@
   "author": { "name": "jpo-oss contributors" },
   "repository": "https://github.com/jpo-oss/tagteam",
   "license": "MIT",
-  "types": "./types/index.d.ts",
   "userConfig": {
     "autoSwitch": {
       "type": "boolean",

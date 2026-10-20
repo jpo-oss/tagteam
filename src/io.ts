@@ -17,18 +17,7 @@ export type Io = {
 // $.env.get needs a literal name, so ioFrom lists every variable the mod reads.
 export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR' | 'TAGTEAM_RUN' | 'PATH'
 
-type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock' | 'state'>
-
-// Session state outlives a plugin reload; a module variable would not.
-const RUN = { plugin: 'tagteam', key: 'run' } as const
-
-// Keeps the launcher's run id and unsets it, so a claude started from this session's Bash tool doesn't claim it too.
-export async function takeRun($: Pick<EngineInterface, 'env' | 'state'>): Promise<void> {
-  const run = await $.env.get('TAGTEAM_RUN')
-  if (!run) return
-  await $.state.set(RUN, run)
-  await $.env.set('TAGTEAM_RUN', undefined)
-}
+type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock' | 'session'>
 
 // A function declaration: the mod loader follows $ into one, not into an arrow.
 export function ioFrom($: Dollar): Io {
@@ -42,7 +31,8 @@ export function ioFrom($: Dollar): Io {
     env: async (n) => {
       if (n === 'HOME') return $.env.get('HOME')
       if (n === 'TAGTEAM_HOME') return $.env.get('TAGTEAM_HOME')
-      if (n === 'TAGTEAM_RUN') return (await $.state.get(RUN)).value ?? $.env.get('TAGTEAM_RUN')
+      // A claude -p started from inside a tagteam session inherits the variable but has no terminal, so it isn't the launched session.
+      if (n === 'TAGTEAM_RUN') return (await $.session.surfaces()).includes('terminal') ? $.env.get('TAGTEAM_RUN') : undefined
       if (n === 'PATH') return $.env.get('PATH')
       return $.env.get('CLAUDE_CONFIG_DIR')
     },

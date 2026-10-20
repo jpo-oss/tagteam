@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import type { On } from 'claude-code'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
 import type { Io } from '../src/io'
@@ -400,6 +401,7 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   const commands: string[] = []
   on('ui.toast', (_, e) => (toasts.push(e.text), { value: undefined }))
   on('ui.status', () => ({ value: undefined }))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
   on('session.cwd', () => ({ value: '/w' }))
   on('session.id', () => ({ value: 's1' }))
   on('session.turns', () => ({ value: 1 }))
@@ -421,7 +423,7 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   expect(commands).toEqual(['exit'])
 })
 
-test('session.start keeps the run id in session state, unsets it for anything the session starts, and a later start still has it', async ($, on) => {
+const launched = async (on: On, surfaces: string[]) => {
   const env: Record<string, string> = { HOME: '/h', TAGTEAM_HOME: '/t', CLAUDE_CONFIG_DIR: '/t/a', TAGTEAM_RUN: 'r1' }
   const io = memoryIo(env)
   await saveAccount(io, acct('a', 0))
@@ -429,21 +431,28 @@ test('session.start keeps the run id in session state, unsets it for anything th
   await io.write('/t/state/active', 'a\n')
   await io.write('/t/a/.claude.json', JSON.stringify({ oauthAccount: { accountUuid: 'ua' } }))
   routeTo(on, io)
-  on('env.set', (_, e) => {
-    if (e.value === undefined) delete env[e.name]
-    else env[e.name] = e.value
-    return { value: {} }
-  })
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const session = { id: 's1' }
+  on('session.surfaces', () => ({ value: surfaces as never }))
   on('session.cwd', () => ({ value: '/w' }))
-  on('session.id', () => ({ value: 's1' }))
+  on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: 1 }))
   on('clock.after', () => ({ value: undefined }))
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect('TAGTEAM_RUN' in env).toBe(false)
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  return { io, env, session }
+}
+
+test('an interactive session started by the launcher can switch, and still can after /clear', async ($, on) => {
+  const { io, env, session } = await launched(on, ['terminal'])
+  session.id = 's2'
   const r = await $.command.run({ command: 'tagteam', args: 'switch b' } as never)
   expect(r.text).toContain('Switching to b')
-  expect((await request(io))?.target_label).toBe('b')
+  expect(await request(io)).toMatchObject({ session: 's2', target_label: 'b' })
+  expect(env.TAGTEAM_RUN).toBe('r1')
+})
+
+test('a claude -p run inside a tagteam session does not act as the launched session', async ($, on) => {
+  const { io } = await launched(on, [])
+  const r = await $.command.run({ command: 'tagteam', args: 'switch b' } as never)
+  expect(r.text).toContain('not started with the tagteam launcher')
+  expect(await request(io)).toBeUndefined()
+  expect(await readActive(io)).toBe('a')
 })

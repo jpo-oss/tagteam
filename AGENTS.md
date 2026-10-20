@@ -25,7 +25,6 @@ TEST_SH=dash sh test/launcher.test.sh
 - `src/io.ts`: the `Io` port. File, process and env access goes through it, never through `$` directly. UI, command and plugin calls use `$`.
 - `src/store.ts`, `src/session.ts`, `src/folders.ts`, `src/switch.ts`, `src/commands.ts`, `src/pane.tsx`: state, tracking, account folders, switching, commands, dashboard.
 - `bin/tagteam`: the launcher.
-- `types/index.d.ts`: the contract for the plugin's session state (`$.state`), named in `plugin.json`.
 - `test/*.test.ts(x)`: plugin tests on an in-memory `Io` (`test/support/memory.ts`). `test/launcher.test.sh` drives the launcher against `test/fake-claude`.
 - `docs/`: architecture page and decision records.
 

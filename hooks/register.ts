@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { ioFrom, takeRun } from '../src/io'
+import { ioFrom } from '../src/io'
 import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
@@ -13,11 +13,6 @@ export const register: Register = (on, options) => {
   let evaluating = false
 
   on('session.start', async ($, e, next) => {
-    try {
-      await takeRun($)
-    } catch (err) {
-      $.ui.log(`tagteam: could not read the launcher's run id: ${message(err)}`, { to: 'debug' })
-    }
     try {
       await $.command.register({ name: 'tagteam', description: 'Manage and switch Claude accounts' })
     } catch (err) {
