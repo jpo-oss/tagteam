@@ -4,7 +4,8 @@ import { routeTo } from './support/route'
 import type { Io } from '../src/io'
 import { runCommand, type Deps } from '../src/commands'
 import { readActive, saveAccount, saveUsage, snoozed } from '../src/store'
-import { evaluate, handover, manualSwitch, newState, settingsFrom, type SwitchCtx, type SwitchUi } from '../src/switch'
+import { evaluate, handover, manualSwitch, newState, scheduleExit, settingsFrom, turnEnded, type SwitchCtx, type SwitchUi } from '../src/switch'
+import { localDay } from '../src/session'
 import type { Account, Settings } from '../src/types'
 
 declare const setTimeout: (fn: () => void, ms: number) => unknown
@@ -26,6 +27,7 @@ const setup = async (opts: { run?: string; pct?: number; live?: string[] } = {})
   }))
   await io.write('/t/b/.claude.json', JSON.stringify({ oauthAccount: { accountUuid: 'ub' }, theme: 'dark' }))
   await setPct(io, 'ua', opts.pct ?? 95)
+  await setPct(io, 'ub', 8)
   return io
 }
 const setPct = (io: Io, uuid: string, pct: number, resetsAt = RESET) =>
@@ -34,7 +36,7 @@ const setPct = (io: Io, uuid: string, pct: number, resetsAt = RESET) =>
     windows: { five_hour: { kind: 'five_hour', percentUsed: pct, resetsAt, readAt: Date.now() } },
   })
 
-type Calls = { asks: string[]; toasts: string[]; notes: string[]; exits: number }
+type Calls = { asks: string[]; toasts: string[]; notes: string[]; exits: number; ready?: () => boolean }
 const fakeUi = (answer?: () => Promise<string>): { ui: SwitchUi; calls: Calls } => {
   const calls: Calls = { asks: [], toasts: [], notes: [], exits: 0 }
   const ui: SwitchUi = {
@@ -43,7 +45,7 @@ const fakeUi = (answer?: () => Promise<string>): { ui: SwitchUi; calls: Calls } 
     notify: async (t) => void calls.notes.push(t),
     cwd: async () => '/w',
     sessionId: async () => 's1',
-    exitSoon: () => void calls.exits++,
+    exitSoon: (ready) => void (calls.exits++, (calls.ready = ready)),
   }
   return { ui, calls }
 }
@@ -64,7 +66,7 @@ test('auto on: switches to the fresh account, copies trust and tells the user on
   expect(r).toMatchObject({ session: 's1', target_label: 'b', target_dir: '/t/b', resume_at: '', stall: '30' })
   expect(r?.handover).toContain('b')
   expect(await readActive(io)).toBe('b')
-  expect(calls.toasts).toEqual(['Switched from a (95% five_hour) to b'])
+  expect(calls.toasts).toEqual(['Switched from a (95% five_hour) to b (8%)'])
   expect(calls.asks).toEqual([])
   expect(calls.exits).toBe(1)
   expect(c.state.pendingExit).toBe(true)
@@ -73,14 +75,84 @@ test('auto on: switches to the fresh account, copies trust and tells the user on
   expect(b.theme).toBe('dark')
 })
 
-test('a pending exit waits for the turn to finish', async () => {
+test('a decision made mid turn writes nothing until the turn ends', async () => {
   const io = await setup()
   const { ui, calls } = fakeUi()
   const c = ctx(io, ui)
   c.state.inTurn = true
   await evaluate(c, Date.now())
-  expect(c.state.pendingExit).toBe(true)
+  await evaluate(c, Date.now())
+  expect(await request(io)).toBeUndefined()
+  expect(await readActive(io)).toBe('a')
+  expect(JSON.parse((await io.read('/t/b/.claude.json')) ?? '{}').projects).toBeUndefined()
+  expect(calls.toasts).toEqual([])
   expect(calls.exits).toBe(0)
+  await turnEnded(c)
+  expect((await request(io))?.target_label).toBe('b')
+  expect(await readActive(io)).toBe('b')
+  expect(calls.toasts).toEqual(['Switched from a (95% five_hour) to b (8%)'])
+  expect(calls.exits).toBe(1)
+})
+
+test('the exit timer stands down if a new turn started, and the next turn end schedules it again', async () => {
+  const io = await setup()
+  const { ui, calls } = fakeUi()
+  const c = ctx(io, ui)
+  c.state.pendingExit = true
+  scheduleExit(c)
+  c.state.inTurn = true
+  expect(calls.ready?.()).toBe(false)
+  expect(c.state.exitScheduled).toBe(false)
+  await turnEnded(c)
+  expect(calls.exits).toBe(2)
+  expect(calls.ready?.()).toBe(true)
+})
+
+test('a failed switch tells the user once and leaves no request', async () => {
+  const base = await setup()
+  const io: Io = { ...base, write: async (p, t) => {
+    if (p.startsWith('/t/state/active')) throw new Error('disk full')
+    return base.write(p, t)
+  } }
+  const { ui, calls } = fakeUi()
+  const c = ctx(io, ui)
+  let failed = 0
+  await evaluate(c, Date.now()).catch(() => failed++)
+  await evaluate(c, Date.now()).catch(() => failed++)
+  expect(failed).toBe(2)
+  expect(calls.toasts).toEqual(["Couldn't switch accounts: disk full"])
+  expect(await request(io)).toBeUndefined()
+  expect(c.state.pendingExit).toBe(false)
+  expect(calls.exits).toBe(0)
+})
+
+test('a /tagteam switch made while the question is open wins over the answer', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('c', 2))
+  await io.write('/t/c/.claude.json', '{}')
+  let release!: (a: string) => void
+  const { ui } = fakeUi(() => new Promise<string>((r) => (release = r)))
+  const c = ctx(io, ui, { autoSwitch: false })
+  const pending = evaluate(c, Date.now())
+  await tick(20)
+  expect(await manualSwitch(c, 'c')).toContain('c')
+  release('Yes')
+  await pending
+  expect((await request(io))?.target_label).toBe('c')
+  expect(await readActive(io)).toBe('c')
+})
+
+test('a window with no reset time keeps no snooze or decision and asks again', async () => {
+  const io = await setup()
+  await setPct(io, 'ua', 96, '')
+  const { ui, calls } = fakeUi(async () => 'No')
+  const c = ctx(io, ui, { autoSwitch: false })
+  await evaluate(c, Date.now())
+  await evaluate(c, Date.now())
+  expect(calls.asks.length).toBe(2)
+  expect(await io.exists('/t/state/snoozes.json')).toBe(false)
+  expect((await io.list('/t/state')).some((n) => n.startsWith('decision-'))).toBe(false)
+  expect(await request(io)).toBeUndefined()
 })
 
 test('under the threshold nothing happens', async () => {
@@ -105,7 +177,7 @@ test('auto off: Yes switches', async () => {
   const { ui, calls } = fakeUi(async () => 'Yes')
   await evaluate(ctx(io, ui, { autoSwitch: false }), Date.now())
   expect(calls.asks.length).toBe(1)
-  expect(calls.asks[0]).toContain('95%')
+  expect(calls.asks[0]).toBe('a is at 95% of its five_hour limit. Switch to b (8%)?')
   expect((await request(io))?.target_label).toBe('b')
   expect(await readActive(io)).toBe('b')
 })
@@ -185,6 +257,25 @@ test('a session does not follow an active account that is itself limited', async
   expect(await request(io)).toBeUndefined()
 })
 
+test('a session does not follow an excluded active account', async () => {
+  const io = await setup({ pct: 10 })
+  await saveAccount(io, { ...acct('b', 1), excluded: true })
+  await io.write('/t/state/active', 'b\n')
+  const { ui } = fakeUi()
+  await evaluate(ctx(io, ui), Date.now())
+  expect(await request(io)).toBeUndefined()
+})
+
+test('a resume time on another day shows the date', async () => {
+  const io = await setup()
+  const far = Date.now() + 3 * 86400_000
+  await setPct(io, 'ua', 96, new Date(far).toISOString())
+  await setPct(io, 'ub', 99, new Date(far + 3600_000).toISOString())
+  const { ui, calls } = fakeUi()
+  await evaluate(ctx(io, ui), Date.now())
+  expect(calls.toasts[0]).toContain(localDay(far))
+})
+
 test('when every account is limited it waits for the soonest reset', async () => {
   const io = await setup()
   const later = new Date(Date.now() + 7200_000).toISOString()
@@ -216,8 +307,9 @@ test('handover names both accounts and the reason, and asks to resume only what 
   expect(text).toContain('a reached 95% of its five_hour limit')
   expect(text).toContain('subagent')
   expect(text).toContain('background task')
-  expect(text).not.toMatch(/[–—\n]/)
-  expect(handover('a', 'a', 'x')).not.toContain('reopened on a')
+  expect(text).not.toMatch(/[\u2013\u2014\n]/)
+  expect(handover('a', 'a', 'x')).not.toContain('reopened')
+  expect(handover(undefined, 'b', 'x')).toContain('closed on your previous account and reopened on the b account')
 })
 
 test('settingsFrom applies defaults and clamps the threshold', () => {
@@ -268,12 +360,17 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   on('command.run', (_, e) => (commands.push(e.command), { text: '' }))
   on('clock.after', () => ({ value: undefined }))
   await $.turn.start({ text: 'go', turnId: 't1' } as never)
-  await $.session.measure({ context: { window: 1000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 96, resetsAt: RESET }], changed: ['rateLimits'] } as never)
-  for (let i = 0; i < 100 && !(await io.exists('/t/state/switch-r1')); i++) await tick(10)
-  expect((await request(io))?.target_label).toBe('b')
-  expect(toasts).toContain('Switched from a (96% five_hour) to b')
+  const reading = { context: { window: 1000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 96, resetsAt: RESET }], changed: ['rateLimits'] } as never
+  await Promise.all([$.session.measure(reading), $.session.measure(reading)])
+  await tick(100)
+  expect(await request(io)).toBeUndefined()
+  await $.session.measure(reading)
+  await tick(100)
+  expect(await request(io)).toBeUndefined()
   expect(commands).toEqual([])
   await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   for (let i = 0; i < 100 && !commands.length; i++) await tick(10)
+  expect((await request(io))?.target_label).toBe('b')
+  expect(toasts.filter((t) => t.startsWith('Switched'))).toEqual(['Switched from a (96% five_hour) to b (8%)'])
   expect(commands).toEqual(['exit'])
 })
