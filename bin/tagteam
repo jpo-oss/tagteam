@@ -1,0 +1,90 @@
+#!/bin/sh
+# Runs claude on the active tagteam account and, when the plugin asks for a
+# switch, starts it again on the target account with --resume.
+
+TAGTEAM_HOME=${TAGTEAM_HOME:-$HOME/.claude-accounts}
+TAGTEAM_RUN="$$-$(date +%s)"
+export TAGTEAM_HOME TAGTEAM_RUN
+state="$TAGTEAM_HOME/state"
+switch_file="$state/switch-$TAGTEAM_RUN"
+run_file="$state/run-$TAGTEAM_RUN"
+watcher=
+
+stop_watcher() {
+  if [ -n "$watcher" ]; then
+    kill "$watcher" 2>/dev/null
+    wait "$watcher" 2>/dev/null
+    watcher=
+  fi
+}
+
+cleanup() {
+  stop_watcher
+  rm -f "$run_file"
+}
+
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 143' TERM
+# A handler, not '' : an ignored signal would stay ignored in claude too.
+trap : INT
+
+value() {
+  sed -n "s/^$1=//p" "$switch_file" 2>/dev/null | head -n 1
+}
+
+# Only matters when claude doesn't exit by itself after the plugin asks it to,
+# for example while it sits on the usage limit menu.
+watch() {
+  trap - EXIT
+  trap '' INT
+  while [ ! -f "$switch_file" ]; do sleep 1; done
+  stall=$(value stall)
+  case $stall in '' | *[!0-9]*) stall=${TAGTEAM_STALL:-30} ;; esac
+  sleep "$stall"
+  self=$(exec sh -c 'echo "$PPID"')
+  for pid in $(pgrep -P "$$"); do
+    [ "$pid" = "$self" ] || kill -TERM "$pid" 2>/dev/null
+  done
+}
+
+mkdir -p "$state" || exit 1
+dir=$(head -n 1 "$state/active-dir" 2>/dev/null)
+session=
+handover=
+
+while :; do
+  printf 'dir=%s\npid=%s\n' "$dir" "$$" > "$run_file.tmp-$$" && mv "$run_file.tmp-$$" "$run_file"
+  watch &
+  watcher=$!
+  if [ -n "$dir" ]; then CLAUDE_CONFIG_DIR=$dir; export CLAUDE_CONFIG_DIR; else unset CLAUDE_CONFIG_DIR; fi
+  # The handover goes first: claude takes the first bare word as the prompt and
+  # ignores the rest, so a prompt in the original args must not displace it.
+  if [ -n "$session" ]; then
+    claude --resume "$session" "$handover" "$@"
+  else
+    claude "$@"
+  fi
+  code=$?
+  stop_watcher
+  rm -f "$run_file"
+
+  session=$(value session)
+  [ -n "$session" ] || { rm -f "$switch_file"; exit "$code"; }
+  dir=$(value target_dir)
+  handover=$(value handover)
+  resume_at=$(value resume_at)
+  label=$(value target_label)
+  rm -f "$switch_file"
+  case $resume_at in '' | *[!0-9]*) ;; *)
+    now=$(date +%s)
+    if [ "$resume_at" -gt "$now" ]; then
+      echo "tagteam: every account is at its limit, resuming at $(date -r "$resume_at" 2>/dev/null || date -d "@$resume_at"). Ctrl-C to quit." >&2
+      trap 'exit 130' INT
+      sleep $((resume_at - now)) &
+      wait "$!"
+      trap : INT
+    fi ;;
+  esac
+  echo "tagteam: resuming on ${label:-$dir}" >&2
+done

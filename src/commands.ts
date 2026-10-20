@@ -8,9 +8,11 @@ export type Deps = {
   logout(io: Io, dir: string): Promise<boolean>
   confirm(question: string): Promise<boolean>
   switchTo(label: string): Promise<string>
+  pluginRoot: string
 }
 
-export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo']): Deps => ({ login, logout, confirm, switchTo })
+export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string): Deps =>
+  ({ login, logout, confirm, switchTo, pluginRoot })
 
 export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | install'
 const NOT_YET = 'Not available yet.'
@@ -138,18 +140,66 @@ async function remove(io: Io, label: string, deps: Deps): Promise<string> {
   return signedOut ? `Removed ${label}.` : `Removed ${label}, but sign-out failed. Sign out of that login at claude.ai if needed.`
 }
 
+const launcherPath = async (io: Io): Promise<string> => {
+  const home = await io.env('HOME')
+  if (!home) throw new Error('HOME is not set')
+  return `${home}/.local/bin/tagteam`
+}
+
+const copyLauncher = async (io: Io, pluginRoot: string, dest: string): Promise<'copied' | 'same'> => {
+  const text = await io.read(`${pluginRoot}/bin/tagteam`)
+  if (text === undefined) throw new Error(`No launcher found in ${pluginRoot}/bin`)
+  if ((await io.read(dest)) === text) return 'same'
+  const tmp = `${dest}.tmp-${Math.random().toString(36).slice(2)}`
+  const must = async (argv: string[]) => {
+    const r = await io.run(argv)
+    if (r.exitCode !== 0) throw new Error(`${argv[0]} failed: ${r.stderr.trim()}`)
+  }
+  await must(['mkdir', '-p', dest.slice(0, dest.lastIndexOf('/'))])
+  try {
+    await io.write(tmp, text)
+    await must(['chmod', '755', tmp])
+    await must(['mv', tmp, dest])
+  } catch (err) {
+    await io.run(['rm', '-f', tmp])
+    throw err
+  }
+  return 'copied'
+}
+
+async function install(io: Io, pluginRoot: string): Promise<string> {
+  const dest = await launcherPath(io)
+  const result = await copyLauncher(io, pluginRoot, dest)
+  const bin = dest.slice(0, dest.lastIndexOf('/'))
+  const onPath = ((await io.env('PATH')) ?? '').split(':').some((p) => p.replace(/\/+$/, '') === bin)
+  const done = result === 'same' ? `${dest} is already up to date.` : `Installed ${dest}.`
+  return onPath
+    ? `${done} Start Claude with \`tagteam\` instead of \`claude\`.`
+    : `${done} ${bin} is not on your PATH. Add it in your shell profile, then start Claude with \`tagteam\`.`
+}
+
+// Keeps an installed launcher in step with plugin updates; never installs one unasked.
+export async function refreshLauncher(io: Io, pluginRoot: string): Promise<void> {
+  const dest = await launcherPath(io)
+  if (await io.exists(dest)) await copyLauncher(io, pluginRoot, dest)
+}
+
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
   const { sub, label, opts } = parseArgs(args)
-  if (sub === 'status' || sub === 'install') return NOT_YET
-  if (sub !== 'add' && sub !== 'edit' && sub !== 'remove' && sub !== 'switch') return USAGE
-  if (!label) return USAGE
-  const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
-  if (problem) return problem
+  if (sub === 'status') return NOT_YET
+  if (sub !== 'add' && sub !== 'edit' && sub !== 'remove' && sub !== 'switch' && sub !== 'install') return USAGE
+  if (sub !== 'install') {
+    if (!label) return USAGE
+    const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
+    if (problem) return problem
+  }
   try {
     await io.run(['true'])
   } catch {
     return TERMINAL
   }
+  if (sub === 'install') return install(io, deps.pluginRoot)
+  if (!label) return USAGE
   if (sub === 'switch') return deps.switchTo(label)
   if (sub === 'add') return add(io, label, deps)
   if (sub === 'edit') return edit(io, label, opts)

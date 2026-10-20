@@ -1,6 +1,6 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
-import { realDeps, runCommand } from '../src/commands'
+import { realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { recordMeasure, recordTurn } from '../src/session'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
 
@@ -17,6 +17,11 @@ export const register: Register = (on, options) => {
     } catch (err) {
       $.ui.log(`tagteam: command registration failed: ${message(err)}`, { to: 'debug' })
     }
+    try {
+      await refreshLauncher(ioFrom($), $.plugin.root)
+    } catch (err) {
+      $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
+    }
     return next(e)
   })
 
@@ -25,7 +30,7 @@ export const register: Register = (on, options) => {
     const io = ioFrom($)
     const switchTo = (label: string) => manualSwitch({ io, ui: uiFrom($), state, settings }, label)
     try {
-      return { text: await runCommand(io, e.args, realDeps(confirm, switchTo)) }
+      return { text: await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root)) }
     } catch (err) {
       return { text: `tagteam: ${message(err)}` }
     }
