@@ -1,0 +1,45 @@
+name: Bug report
+description: Something in tagteam doesn't work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. /tagteam add work
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Terminal, started with tagteam
+        - Terminal, plain claude
+        - Desktop app
+        - IDE extension
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: tagteam version, `claude --version`, and OS.
+      placeholder: tagteam 0.1.0, Claude Code 2.1.304, macOS 26
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output or logs
+      description: Launcher output and any `tagteam:` lines from Claude's debug log. Remove emails if you'd rather not share them.
+      render: text
