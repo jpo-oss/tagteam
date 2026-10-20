@@ -195,6 +195,7 @@ it 'stalled claude gets SIGTERM within 3s and relaunch follows'
 if [ -s "$case_dir/fake/signals" ] && [ "$(elapsed)" -le 3 ] && [ "$(field 2 cfg)" = "$case_dir/B" ]; then pass; else fail; fi
 
 setup stall-default
+# shellcheck disable=SC2016 # literal on purpose: the stub sleep expands these when it runs
 printf '#!/bin/sh\necho "$1" >> "$FAKE_DIR/sleeps"\n[ "$1" = 30 ] && exit 0\nexec /bin/sleep "$@"\n' > "$case_dir/bin/sleep"
 chmod +x "$case_dir/bin/sleep"
 echo hang > "$case_dir/fake/mode-1"
