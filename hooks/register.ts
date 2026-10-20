@@ -36,7 +36,11 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     try {
-      await $.command.register({ name: 'tagteam', description: 'Manage and switch Claude accounts' })
+      await $.command.register({
+        name: 'tagteam',
+        description: 'Manage and switch Claude accounts',
+        argumentHint: '[status | add | remove | edit | switch | refresh | install] [label]',
+      })
     } catch (err) {
       $.ui.log(`tagteam: command registration failed: ${message(err)}`, { to: 'debug' })
     }
