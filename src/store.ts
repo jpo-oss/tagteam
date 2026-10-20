@@ -60,6 +60,16 @@ export const loadUsage = async (io: Io, uuid: string): Promise<Usage> =>
 export const saveUsage = async (io: Io, u: Usage): Promise<void> =>
   writeJsonAtomic(io, `${await stateDir(io)}/usage/${u.accountUuid}.json`, u)
 
+// Changes whenever any session on this machine writes an account, a reading or the default.
+export const stateStamp = async (io: Io): Promise<string> => {
+  const dir = await stateDir(io)
+  const parts = [`active:${await io.mtimeMs(`${dir}/active`)}`]
+  for (const sub of ['accounts', 'usage']) {
+    for (const n of await io.list(`${dir}/${sub}`)) parts.push(`${sub}/${n}:${await io.mtimeMs(`${dir}/${sub}/${n}`)}`)
+  }
+  return parts.join('|')
+}
+
 export const readActive = async (io: Io): Promise<string | undefined> => {
   const text = await io.read(`${await stateDir(io)}/active`)
   return text?.split('\n')[0]?.trim() || undefined
@@ -69,6 +79,25 @@ export const writeActive = async (io: Io, a: Account): Promise<void> => {
   const dir = await stateDir(io)
   await writeAtomic(io, `${dir}/active`, `${oneLine(a.label)}\n`)
   await writeAtomic(io, `${dir}/active-dir`, `${oneLine(a.dir)}\n`)
+}
+
+export const clearActive = async (io: Io): Promise<void> => {
+  const dir = await stateDir(io)
+  await mustRun(io, ['rm', '-f', `${dir}/active`, `${dir}/active-dir`])
+}
+
+// True when a running launcher (its run-<id> file, with a live pid) has claude open on this folder.
+export const folderInUse = async (io: Io, folder: string): Promise<boolean> => {
+  const dir = await stateDir(io)
+  for (const name of await io.list(dir)) {
+    if (!name.startsWith('run-') || name.includes('.tmp-')) continue
+    const text = (await io.read(`${dir}/${name}`)) ?? ''
+    const get = (k: string) => text.split('\n').find((l) => l.startsWith(`${k}=`))?.slice(k.length + 1)
+    const pid = get('pid')
+    if (get('dir') !== folder || !pid || !/^\d+$/.test(pid)) continue
+    if ((await io.run(['kill', '-0', pid]).catch(() => undefined))?.exitCode === 0) return true
+  }
+  return false
 }
 
 export const writeSwitchRequest = async (io: Io, r: SwitchRequest): Promise<void> => {

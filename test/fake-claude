@@ -24,7 +24,7 @@ if [ "${1-}" = auth ]; then
 fi
 n=$(($(wc -l < "$FAKE_DIR/log" 2>/dev/null || echo 0) + 1))
 run_file=$(tr '\n' ' ' < "$TAGTEAM_HOME/state/run-$TAGTEAM_RUN" 2>/dev/null)
-printf 'run=%s cfg=%s t=%s runfile=%s\n' "$n" "${CLAUDE_CONFIG_DIR-UNSET}" "$(date +%s)" "$run_file" >> "$FAKE_DIR/log"
+printf 'run=%s cfg=%s t=%s cwd=%s runfile=%s\n' "$n" "${CLAUDE_CONFIG_DIR-UNSET}" "$(date +%s)" "$(pwd -P)" "$run_file" >> "$FAKE_DIR/log"
 printf '%s\n' "$@" > "$FAKE_DIR/args-$n"
 mode=$(cat "$FAKE_DIR/mode-$n" 2>/dev/null || echo 'exit 0')
 switch_file="$TAGTEAM_HOME/state/switch-$TAGTEAM_RUN"

@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@example.com' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', refreshLater: () => undefined, ...over,
 })
 
 test('parseArgs', () => {
@@ -75,12 +75,31 @@ test('add cleans up when login fails', async () => {
   expect(await io.exists('/t/work')).toBe(false)
 })
 
-test('remove refuses the active account', async () => {
+test('remove refuses an account a live tagteam session is using, and ignores a dead one', async () => {
   const io = await setup()
   await runCommand(io, 'add work', deps())
+  await io.write('/t/state/run-1-2', 'dir=/t/work\npid=111\n')
+  await io.write('/t/state/run-3-4', 'dir=/t/work\npid=222\n')
+  const run = io.run
+  let alive = '111'
+  io.run = async (argv, opts) => (argv[0] === 'kill' ? { exitCode: argv[2] === alive ? 0 : 1, stdout: '', stderr: '' } : run(argv, opts))
   const text = await runCommand(io, 'remove work', deps())
-  expect(text).toContain('active')
+  expect(text).toContain('in use by a running tagteam session')
   expect(await io.exists('/t/work')).toBe(true)
+  alive = ''
+  expect(await runCommand(io, 'remove work', deps())).toContain('Removed work.')
+})
+
+test('removing the launcher default moves it to the next account by order, or clears it', async () => {
+  const io = await setup()
+  await runCommand(io, 'add work', deps())
+  await runCommand(io, 'add home', deps({ login: stubLogin('u-home') }))
+  expect(await runCommand(io, 'delete work', deps())).toBe('Removed work.')
+  expect(await readActive(io)).toBe('home')
+  expect(await io.read('/t/state/active-dir')).toBe('/t/home\n')
+  expect(await runCommand(io, 'remove home', deps())).toBe('Removed home.')
+  expect(await readActive(io)).toBeUndefined()
+  expect(await io.exists('/t/state/active-dir')).toBe(false)
 })
 
 test('remove deletes folder and record after confirmation, and cancel keeps them', async () => {
@@ -402,4 +421,42 @@ test('session.start toasts accounts it adopts', async ($, on) => {
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect(toasts).toEqual(['Added work (w@example.com)'])
+})
+
+test('add cancelled with Ctrl+C says nothing was added and cleans up', async () => {
+  const io = await setup()
+  const text = await runCommand(io, 'add work', deps({ login: async () => { throw new Error('$.process.run(claude) aborted') } }))
+  expect(text.split('\n')[0]).toBe('Cancelled. Nothing added.')
+  expect(await io.exists('/t/work')).toBe(false)
+  expect(await listAccounts(io)).toEqual([])
+})
+
+test('add refreshes the new account in the background', async () => {
+  const io = await setup()
+  const later: string[][] = []
+  await runCommand(io, 'add work', deps({ refreshLater: (a) => later.push(a.map((x) => x.label)) }))
+  expect(later).toEqual([['work']])
+})
+
+test('refresh runs one short prompt per usable account and reports failures by label', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('a', 'ua', 0))
+  await saveAccount(io, { ...acct('b', 'ub', 1), excluded: true })
+  await saveAccount(io, { ...acct('c', 'uc', 2), needsSignIn: true })
+  await saveAccount(io, acct('d', 'ud', 3))
+  await saveAccount(io, acct('e', 'ue', 4))
+  const calls: [string[], Record<string, string> | undefined, number | undefined, string | undefined][] = []
+  const run = io.run
+  io.run = async (argv, opts) => {
+    if (argv[0] !== 'claude') return run(argv, opts)
+    calls.push([argv, opts?.env, opts?.timeoutMs, opts?.cwd])
+    if (opts?.env?.CLAUDE_CONFIG_DIR === '/t/e') throw new Error('timed out')
+    return { exitCode: opts?.env?.CLAUDE_CONFIG_DIR === '/t/d' ? 1 : 0, stdout: 'OK', stderr: '' }
+  }
+  let opened = 0
+  const text = await runCommand(io, 'refresh', deps({ openPane: async () => (opened++, '') }))
+  expect(text).toBe('Refreshed 1 of 5 accounts. Failed: d, e.')
+  expect(calls.map((c) => c[1]?.CLAUDE_CONFIG_DIR)).toEqual(['/t/a', '/t/d', '/t/e'])
+  expect(calls[0]).toEqual([['claude', '-p', '--model', 'haiku', 'Reply with OK.'], { CLAUDE_CONFIG_DIR: '/t/a', TAGTEAM_REFRESH: '1' }, 60000, '/t/state'])
+  expect(opened).toBe(1)
 })

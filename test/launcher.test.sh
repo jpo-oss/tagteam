@@ -258,7 +258,7 @@ launch; code=$?
 it 'add signs the new folder in and leaves the record to the plugin'
 if [ "$code" = 0 ] && authed "login $case_dir/home/work" && [ -f "$case_dir/home/work/.claude.json" ] &&
   [ ! -e "$case_dir/home/state/accounts/work.json" ] && runs 0 &&
-  out_has "Added work (a@example.com). It's ready the next time you start tagteam." && out_has 'open the URL on another device'; then pass; else fail; fi
+  out_has "Added work (a@example.com). It's ready, with its usage, after the next time you start tagteam." && out_has 'open the URL on another device'; then pass; else fail; fi
 
 setup add-dup-email
 record main "$case_dir/home/main" a@example.com 0 false
@@ -295,14 +295,33 @@ launch; code=$?
 it 'a failed sign-in signs out and removes the new folder'
 if [ "$code" != 0 ] && [ ! -e "$case_dir/home/work" ] && authed "logout $case_dir/home/work" && out_has 'not added'; then pass; else fail; fi
 
-setup remove-active
+setup remove-in-use
 mkdir -p "$case_dir/home/work"
 record work "$case_dir/home/work" w@example.com 0 false
-echo work > "$case_dir/home/state/active"
+printf 'dir=%s\npid=%s\n' "$case_dir/home/work" "$$" > "$case_dir/home/state/run-1-1"
 launch_args='remove work'
 launch TAGTEAM_CONFIRM=y; code=$?
-it 'remove refuses the active account'
-if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'active account'; then pass; else fail; fi
+it 'remove refuses an account a live tagteam session is using'
+if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'in use by a running tagteam session'; then pass; else fail; fi
+
+setup remove-default
+mkdir -p "$case_dir/home/work" "$case_dir/home/home"
+record work "$case_dir/home/work" w@example.com 0 false
+record home "$case_dir/home/home" h@example.com 1 false
+echo work > "$case_dir/home/state/active"
+echo "$case_dir/home/work" > "$case_dir/home/state/active-dir"
+sh -c 'exit 0' & dead=$!
+wait "$dead"
+printf 'dir=%s\npid=%s\n' "$case_dir/home/work" "$dead" > "$case_dir/home/state/run-1-1"
+launch_args='delete work'
+launch TAGTEAM_CONFIRM=y; c1=$?
+it 'delete removes an account no live session uses'
+if [ "$c1" = 0 ] && [ ! -e "$case_dir/home/work" ] && [ "$(cat "$case_dir/home/state/active")" = home ] &&
+  [ "$(cat "$case_dir/home/state/active-dir")" = "$case_dir/home/home" ]; then pass; else fail; fi
+launch_args='remove home'
+launch TAGTEAM_CONFIRM=y; c2=$?
+it 'removing the last account works'
+if [ "$c2" = 0 ] && [ ! -e "$case_dir/home/state/active" ] && [ ! -e "$case_dir/home/state/active-dir" ]; then pass; else fail; fi
 
 setup remove-outside
 mkdir -p "$case_dir/outside" "$case_dir/home/state/x" "$case_dir/home/a/b"
@@ -357,6 +376,18 @@ launch_args=list
 launch
 it 'list with no accounts says how to add one'
 if out_has 'tagteam add <label>'; then pass; else fail; fi
+
+setup refresh
+record zed "$case_dir/home/zed" z@example.com 0 true
+record alpha "$case_dir/home/alpha" a@example.com 1 false
+record beta "$case_dir/home/beta" b@example.com 2 false
+echo 'exit 1' > "$case_dir/fake/mode-2"
+launch_args=refresh
+launch; code=$?
+it 'refresh runs one short prompt per usable account from the state folder, reports failures, then lists'
+if [ "$code" = 0 ] && runs 2 && [ "$(field 1 cfg)" = "$case_dir/home/alpha" ] && [ "$(field 1 cwd)" = "$(cd "$case_dir/home/state" && pwd -P)" ] && [ "$(field 2 cfg)" = "$case_dir/home/beta" ] &&
+  args_are 1 -p --model haiku 'Reply with OK.' && out_has 'Refreshed 1 of 3 accounts. Failed: beta.' &&
+  out_has '  alpha  a@example.com'; then pass; else fail; fi
 
 setup dashdash-add
 launch_args='-- add'
