@@ -1,0 +1,9 @@
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/plans/
+.claude/todos.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude-plugin/types/
+node_modules/
+.DS_Store
