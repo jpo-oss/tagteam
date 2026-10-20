@@ -61,7 +61,7 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `/tagteam` or `/tagteam status` | Opens the dashboard: each account's usage windows, reset times and input/output tokens |
+| `/tagteam` or `/tagteam status` | Opens the dashboard: each account's usage windows, reset times, input/output tokens and the auto switch setting |
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
 | `/tagteam remove <label>` | Signs the account out and deletes its folder. You can't remove the active account. |

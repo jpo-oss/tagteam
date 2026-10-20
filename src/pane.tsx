@@ -2,7 +2,7 @@ import type { ElementTable } from 'claude-code'
 import type { Io } from './io'
 import { localDay, when } from './session'
 import { listAccounts, loadUsage, readActive } from './store'
-import type { Tokens } from './types'
+import type { Settings, Tokens } from './types'
 import { effectivePercent, windowName } from './usage'
 
 export type Row = { label: string; email: string; active: boolean; state: string; windows: string[]; tokens: string; early?: string }
@@ -60,13 +60,18 @@ export function wrapLine(segments: string[], columns: number, indent = '  ', sep
   return lines.map((l) => (l.length > columns ? `${l.slice(0, Math.max(1, columns - 1))}…` : l))
 }
 
+export const settingsLine = (s: Settings): string =>
+  s.autoSwitch ? `Auto switch on at ${s.threshold}%` : `Auto switch off (asks at ${s.threshold}%)`
+
 const plain = (text: string, columns: number): string[] => wrapLine(text.split(/\s+/), columns, '', ' ')
 
 // A function declaration, like the other files that take engine parts.
-export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number) {
-  if (!rows.length) return <Box flexDirection="column">{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
+export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number, settings: string) {
+  const head = plain(settings, columns).map((l, i) => <Text key={`s${i}`}>{l}</Text>)
+  if (!rows.length) return <Box flexDirection="column">{head}{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
   return (
     <Box flexDirection="column" width={columns}>
+      <Box marginBottom={1} flexDirection="column">{head}</Box>
       {rows.map((r) => (
         <Box key={r.label} flexDirection="column" marginBottom={1}>
           {wrapLine([`${r.active ? '●' : ' '} ${r.label}`, r.email, r.state, ...r.windows], columns).map((l, i) => (

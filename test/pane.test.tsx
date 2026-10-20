@@ -149,3 +149,17 @@ test('corrupt account or usage files draw an error line', async ($, on) => {
   await ui.unmount()
   await again.unmount()
 })
+
+test('the top line shows auto switch on', { options: { autoSwitch: true, threshold: 95 } }, async ($, on) => {
+  await setup($, on, await seed())
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Text' }))[0]?.text).toContain('on at 95%')
+  await ui.unmount()
+})
+
+test('the top line shows auto switch off', { options: { autoSwitch: false, threshold: 80 } }, async ($, on) => {
+  await setup($, on, await seed())
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.findAll({ type: 'Text' }))[0]?.text).toContain('off (asks at 80%)')
+  await ui.unmount()
+})
