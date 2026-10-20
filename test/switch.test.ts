@@ -15,10 +15,10 @@ const RESET = new Date(Date.now() + 3600_000).toISOString()
 const acct = (label: string, order: number): Account =>
   ({ label, dir: `/t/${label}`, accountUuid: `u${label}`, email: `${label}@x.io`, order, excluded: false, needsSignIn: false })
 
-const setup = async (opts: { run?: string; pct?: number; live?: string[] } = {}) => {
+const setup = async (opts: { run?: string; pct?: number } = {}) => {
   const env: Record<string, string> = { HOME: '/h', TAGTEAM_HOME: '/t', CLAUDE_CONFIG_DIR: '/t/a' }
   if (opts.run !== '') env.TAGTEAM_RUN = opts.run ?? 'r1'
-  const io = memoryIo(env, opts.live)
+  const io = memoryIo(env)
   await saveAccount(io, acct('a', 0))
   await saveAccount(io, acct('b', 1))
   await io.write('/t/state/active', 'a\n')
@@ -193,13 +193,24 @@ test('under the threshold nothing happens', async () => {
   expect(calls).toEqual({ asks: [], toasts: [], notes: [], exits: 0 })
 })
 
-test('trust is not copied while another claude runs in the target folder', async () => {
-  const io = await setup({ live: ['4242'] })
-  await io.write('/t/state/run-other', 'dir=/t/b\npid=4242\n')
-  const { ui } = fakeUi()
-  await evaluate(ctx(io, ui), Date.now())
-  expect((await request(io))?.target_label).toBe('b')
-  expect(JSON.parse((await io.read('/t/b/.claude.json')) ?? '{}').projects).toBeUndefined()
+test('trust is added to what the target folder holds at that moment, and an unchanged file is not rewritten', async () => {
+  const io = await setup()
+  const writes: string[] = []
+  const spy: Io = { ...io, write: (p, t) => (writes.push(p), io.write(p, t)) }
+  const live = { oauthAccount: { accountUuid: 'ub' }, theme: 'light', projects: { '/other': { hasTrustDialogAccepted: true } } }
+  await io.write('/t/b/.claude.json', JSON.stringify(live))
+  await evaluate(ctx(spy, fakeUi().ui), Date.now())
+  const b = JSON.parse((await io.read('/t/b/.claude.json')) ?? '{}')
+  expect(b).toEqual({ ...live, projects: { ...live.projects, '/w': { hasTrustDialogAccepted: true } } })
+  expect(writes.some((p) => p.startsWith('/t/b/.claude.json.tmp-'))).toBe(true)
+
+  const again = await setup()
+  await again.write('/t/b/.claude.json', JSON.stringify(b))
+  const writes2: string[] = []
+  const spy2: Io = { ...again, write: (p, t) => (writes2.push(p), again.write(p, t)) }
+  await evaluate(ctx(spy2, fakeUi().ui), Date.now())
+  expect((await request(again))?.target_label).toBe('b')
+  expect(writes2.some((p) => p.startsWith('/t/b/'))).toBe(false)
 })
 
 test('auto off: Yes switches', async () => {
@@ -409,3 +420,4 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   expect(toasts.filter((t) => t.startsWith('Switched'))).toEqual(['Switched from a (96% 5h) to b (8%)'])
   expect(commands).toEqual(['exit'])
 })
+

@@ -4,7 +4,7 @@ declare const setTimeout: (fn: () => void, ms: number) => unknown
 
 // In-memory stand-in for the engine: `claude plugin test` gives a test no disk,
 // no process and no Node/Bun globals. Emulates only what store.ts runs.
-export const memoryIo = (env: Record<string, string> = {}, livePids: readonly string[] = []): Io => {
+export const memoryIo = (env: Record<string, string> = {}): Io => {
   const files = new Map<string, { text: string; mtime: number; link?: string }>()
   const dirs = new Map<string, number>()
   const parent = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/'
@@ -49,7 +49,6 @@ export const memoryIo = (env: Record<string, string> = {}, livePids: readonly st
       return ok()
     }
     if (cmd === 'true' || cmd === 'chmod') return ok()
-    if (cmd === 'kill') return livePids.includes(args[0] ?? '') ? ok() : fail('kill: No such process')
     if (cmd === 'ln') {
       const [target, dest] = args as [string, string]
       if (dirs.has(dest) && !files.has(dest)) return fail(`ln: ${dest}: is a directory`)

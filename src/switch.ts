@@ -5,7 +5,7 @@ import { pickTarget } from './pick'
 import { configFile, currentAccountUuid, when } from './session'
 import {
   awaitDecision, claimDecision, dropDecision, listAccounts, loadUsage, pruneDecisions, readActive, readJson,
-  releaseDecision, snooze, snoozed, stateRoot, writeActive, writeJsonAtomic, writeSwitchRequest,
+  releaseDecision, snooze, snoozed, writeActive, writeJsonAtomic, writeSwitchRequest,
 } from './store'
 import type { Account, Settings, Usage, Window } from './types'
 import { effectivePercent, windowName } from './usage'
@@ -82,29 +82,13 @@ const once = (state: SwitchState, key: string): boolean => !state.told.has(key) 
 const shortError = (err: unknown): string =>
   (err instanceof Error ? err.message : String(err)).split('\n')[0]!.slice(0, 160)
 
-const kv = (text: string): Record<string, string> =>
-  Object.fromEntries(text.split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]))
-
-const trimSlash = (p: string) => p.replace(/\/+$/, '')
-
-// A running claude keeps rewriting its own .claude.json, so writing to it then would be lost or clobber it.
-const inUse = async (io: Io, dir: string): Promise<boolean> => {
-  const state = `${await stateRoot(io)}/state`
-  for (const name of await io.list(state)) {
-    if (!name.startsWith('run-') || name.includes('.tmp-')) continue
-    const r = kv((await io.read(`${state}/${name}`)) ?? '')
-    if (trimSlash(r.dir ?? '') !== trimSlash(dir) || !/^\d+$/.test(r.pid ?? '')) continue
-    if ((await io.run(['kill', '-0', r.pid!])).exitCode === 0) return true
-  }
-  return false
-}
-
+// A claude running in the target folder may rewrite .claude.json too, so read it last and add only the trust keys.
 const copyTrust = async (io: Io, cwd: string, dir: string): Promise<void> => {
-  if (await inUse(io, dir)) return
+  const source = await readJson<Record<string, unknown>>(io, await configFile(io), {})
   const path = `${dir}/.claude.json`
   const target = await readJson<Record<string, unknown> | undefined>(io, path, undefined)
   if (!target) return
-  const next = withTrust(target, await readJson<Record<string, unknown>>(io, await configFile(io), {}), cwd)
+  const next = withTrust(target, source, cwd)
   if (JSON.stringify(next) !== JSON.stringify(target)) await writeJsonAtomic(io, path, next)
 }
 
