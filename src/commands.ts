@@ -1,6 +1,7 @@
 import type { Io } from './io'
-import { login, logout, prepareFolder, validLabel } from './folders'
-import { listAccounts, readActive, readJson, removeAccountRecord, saveAccount, stateRoot, writeActive } from './store'
+import { withSeed } from './appstate'
+import { homeAppState, linkShared, login, logout, prepareFolder, validLabel } from './folders'
+import { listAccounts, readActive, readJson, removeAccountRecord, saveAccount, stateRoot, writeActive, writeJsonAtomic } from './store'
 import type { Account } from './types'
 
 export type Deps = {
@@ -56,37 +57,66 @@ const identity = async (io: Io, dir: string): Promise<{ uuid?: string; email: st
   return { uuid: j.oauthAccount?.accountUuid || undefined, email: j.oauthAccount?.emailAddress ?? '' }
 }
 
+// Saves a signed-in folder as an account, unless another account already has that login.
+const enroll = async (io: Io, label: string, dir: string, prepare: () => Promise<void>): Promise<{ account?: Account; dup?: Account }> => {
+  const { uuid, email } = await identity(io, dir)
+  if (!uuid) throw new Error('Login finished but no account was found in the new folder')
+  const accounts = await listAccounts(io)
+  const dup = accounts.find((a) => a.accountUuid === uuid)
+  if (dup) return { dup }
+  await prepare()
+  const order = accounts.reduce((n, a) => Math.max(n, a.order + 1), 0)
+  const account: Account = { label, dir, accountUuid: uuid, email, order, excluded: false, needsSignIn: false }
+  await saveAccount(io, account)
+  if (!(await readActive(io))) await writeActive(io, account)
+  return { account }
+}
+
+const REMOTE = 'On a remote machine, run tagteam add <label> in a terminal instead.'
+
 async function add(io: Io, label: string, deps: Deps): Promise<string> {
   const root = await stateRoot(io)
   const dir = `${root}/${label}`
   if ((await listAccounts(io)).some((a) => a.label === label) || (await io.exists(dir))) return `${label} already exists.`
-  let saved = false
   try {
     await prepareFolder(io, dir)
     await deps.login(io, dir)
-    const { uuid, email } = await identity(io, dir)
-    if (!uuid) throw new Error('Login finished but no account was found in the new folder')
-    const accounts = await listAccounts(io)
-    const dup = accounts.find((a) => a.accountUuid === uuid)
+    const { account, dup } = await enroll(io, label, dir, async () => undefined)
     if (dup) {
-      await cleanup(io, dir, label, saved, deps)
+      await cleanup(io, dir, label, deps)
       return `That login is already the account "${dup.label}". Nothing added.`
     }
-    const account: Account = { label, dir, accountUuid: uuid, email, order: accounts.length, excluded: false, needsSignIn: false }
-    await saveAccount(io, account)
-    saved = true
-    if (!(await readActive(io))) await writeActive(io, account)
-    return `Added ${label} (${email}). The browser signs in whichever claude.ai account it already has open, so check it matches.`
+    return `Added ${label} (${account!.email}). The browser signs in whichever claude.ai account it already has open, so check it matches.`
   } catch (err) {
-    await cleanup(io, dir, label, saved, deps)
+    await cleanup(io, dir, label, deps)
     return `Could not add ${label}: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
-const cleanup = async (io: Io, dir: string, label: string, saved: boolean, deps: Deps): Promise<void> => {
+const cleanup = async (io: Io, dir: string, label: string, deps: Deps): Promise<void> => {
   await deps.logout(io, dir).catch(() => undefined)
   await rmUnderRoot(io, dir).catch(() => undefined)
-  if (saved) await removeAccountRecord(io, label).catch(() => undefined)
+  await removeAccountRecord(io, label).catch(() => undefined)
+}
+
+// Picks up folders that `tagteam add` signed in from a terminal, which leaves the record to the plugin.
+export async function adoptFolders(io: Io): Promise<string[]> {
+  const root = await stateRoot(io)
+  const accounts = await listAccounts(io)
+  const taken = new Set(accounts.flatMap((a) => [a.label, a.dir]))
+  const notes: string[] = []
+  for (const label of await io.list(root)) {
+    const dir = `${root}/${label}`
+    if (labelProblem(label) || taken.has(label) || taken.has(dir)) continue
+    if (!(await identity(io, dir).catch(() => undefined))?.uuid) continue
+    const { account, dup } = await enroll(io, label, dir, async () => {
+      await linkShared(io, dir)
+      const file = `${dir}/.claude.json`
+      await writeJsonAtomic(io, file, withSeed(await readJson(io, file, {}), await homeAppState(io)))
+    })
+    notes.push(dup ? `Not adding ${label}: it's the same login as ${dup.label}.` : `Added ${label} (${account!.email})`)
+  }
+  return notes
 }
 
 const EDIT_KEYS = ['name', 'order', 'exclude']
@@ -199,7 +229,7 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
   if (sub === 'install') return install(io, deps.pluginRoot)
   if (!label) return USAGE
   if (sub === 'switch') return deps.switchTo(label)
-  if (sub === 'add') return add(io, label, deps)
+  if (sub === 'add') return `${await add(io, label, deps)}\n${REMOTE}`
   if (sub === 'edit') return edit(io, label, opts)
   return remove(io, label, deps)
 }

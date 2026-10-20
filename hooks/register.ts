@@ -1,6 +1,6 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
-import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
+import { adoptFolders, parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows, settingsLine } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
@@ -22,6 +22,11 @@ export const register: Register = (on, options) => {
       await refreshLauncher(ioFrom($), $.plugin.root)
     } catch (err) {
       $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
+    }
+    try {
+      for (const note of await adoptFolders(ioFrom($))) $.ui.toast(note)
+    } catch (err) {
+      $.ui.log(`tagteam: adding terminal sign-ins failed: ${message(err)}`, { to: 'debug' })
     }
     return next(e)
   })
