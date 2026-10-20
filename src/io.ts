@@ -1,3 +1,5 @@
+import type { EngineInterface } from 'claude-code'
+
 export type RunResult = { exitCode: number; stdout: string; stderr: string }
 
 export type Io = {
@@ -12,18 +14,7 @@ export type Io = {
   sleep(ms: number): Promise<void>
 }
 
-type Dollar = {
-  fs: {
-    read(p: string): Promise<string>
-    write(p: string, t: string): Promise<void>
-    exists(p: string): Promise<boolean>
-    list(p: string): Promise<{ name: string }[]>
-    stat(p: string): Promise<{ mtimeMs: number }>
-  }
-  process: { run(argv: string[], init?: { env?: Record<string, string>; timeoutMs?: number }): Promise<RunResult> }
-  env: { get(name: string): Promise<string | undefined> }
-  clock: { now(): Promise<number>; sleep(ms: number): Promise<void> }
-}
+type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock'>
 
 export const ioFrom = ($: Dollar): Io => ({
   read: async (p) => ((await $.fs.exists(p)) ? $.fs.read(p) : undefined),
