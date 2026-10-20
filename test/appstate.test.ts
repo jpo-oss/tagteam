@@ -1,6 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import { seedAppState, withTrust } from '../src/appstate'
 
+type Out = { projects: Record<string, Record<string, unknown>>; oauthAccount?: unknown }
+
 test('seed drops login-bound keys and keeps the rest', async () => {
   const home = {
     oauthAccount: { emailAddress: 'a@x.io' }, userID: 'u', cachedGrowthBookFeatures: {},
@@ -19,7 +21,7 @@ test('seed drops subscription, overage and pass state', async () => {
 test('withTrust copies the accepted flags for cwd and leaves the rest of target', async () => {
   const source = { projects: { '/w': { hasTrustDialogAccepted: true, lastCost: 9, allowedTools: ['x'] } } }
   const target = { oauthAccount: { a: 1 }, projects: { '/o': { hasTrustDialogAccepted: true }, '/w': { lastCost: 1 } } }
-  const out = withTrust(target, source, '/w') as any
+  const out = withTrust(target, source, '/w') as Out
   expect(out.projects['/w']).toEqual({ lastCost: 1, hasTrustDialogAccepted: true })
   expect(out.projects['/o']).toEqual({ hasTrustDialogAccepted: true })
   expect(out.oauthAccount).toEqual({ a: 1 })
@@ -27,7 +29,7 @@ test('withTrust copies the accepted flags for cwd and leaves the rest of target'
 })
 
 test('withTrust creates the project entry when target lacks it', async () => {
-  const out = withTrust({}, { projects: { '/w': { hasTrustDialogAccepted: true } } }, '/w') as any
+  const out = withTrust({}, { projects: { '/w': { hasTrustDialogAccepted: true } } }, '/w') as Out
   expect(out.projects['/w']).toEqual({ hasTrustDialogAccepted: true })
 })
 
@@ -35,4 +37,27 @@ test('withTrust is a no-op when source never trusted cwd', async () => {
   const target = { projects: { '/o': {} } }
   expect(withTrust(target, { projects: { '/w': { lastCost: 1 } } }, '/w')).toEqual(target)
   expect(withTrust(target, {}, '/w')).toEqual(target)
+})
+
+test('seed drops unknown keys that look account-bound', async () => {
+  const seed = seedAppState({ someNewOauthThing: 1, primaryEmail: 'a', organizationUuid: 'o', fooToken: 't', hasCompletedOnboarding: true, theme: 'dark', mcpServers: {}, projects: {} })
+  expect(Object.keys(seed).sort()).toEqual(['hasCompletedOnboarding', 'mcpServers', 'projects', 'theme'])
+})
+
+test('withTrust never downgrades a true flag', async () => {
+  const out = withTrust({ projects: { '/w': { hasTrustDialogAccepted: true } } }, { projects: { '/w': { hasTrustDialogAccepted: false, hasX: true } } }, '/w') as Out
+  expect(out.projects['/w']).toEqual({ hasTrustDialogAccepted: true })
+})
+
+test('withTrust inherits the nearest trusted ancestor', async () => {
+  const source = { projects: { '/a': { hasTrustDialogAccepted: true }, '/a/b': { hasTrustDialogAccepted: false } } }
+  const out = withTrust({ oauthAccount: 1 }, source, '/a/b/c') as Out
+  expect(out.projects).toEqual({ '/a': { hasTrustDialogAccepted: true } })
+  expect(out.oauthAccount).toBe(1)
+})
+
+test('withTrust copies Approved flags but not WarningShown', async () => {
+  const source = { projects: { '/w': { hasClaudeMdExternalIncludesApproved: true, hasClaudeMdExternalIncludesWarningShown: true } } }
+  const out = withTrust({}, source, '/w') as Out
+  expect(out.projects['/w']).toEqual({ hasClaudeMdExternalIncludesApproved: true })
 })
