@@ -13,12 +13,23 @@ setup() {
   : > "$case_dir/fake/log"
 }
 
-# shellcheck disable=SC2086 # launch_args is split into words on purpose
+# launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
 launch() {
   (
     unset CLAUDE_CONFIG_DIR
-    env PATH="$case_dir/bin:$PATH" TAGTEAM_HOME="$case_dir/home" FAKE_DIR="$case_dir/fake" \
-      "$@" "${TEST_SH:-sh}" "$repo/bin/tagteam" ${launch_args:---model opus} </dev/null >"$case_dir/out" 2>&1
+    for kv in "$@"; do export "${kv?}"; done
+    export PATH="$case_dir/bin:$PATH" TAGTEAM_HOME="$case_dir/home" FAKE_DIR="$case_dir/fake"
+    if [ -n "$launch_lines" ]; then
+      IFS='
+'
+      set -f
+      # shellcheck disable=SC2086
+      set -- $launch_lines
+    else
+      # shellcheck disable=SC2086
+      set -- ${launch_args:---model opus}
+    fi
+    "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" </dev/null >"$case_dir/out" 2>&1
   )
 }
 
@@ -93,6 +104,38 @@ check_dropped session-id '--session-id x'
 check_dropped fork --fork-session
 check_dropped resume-bare --resume
 check_dropped from-pr '--from-pr 12'
+
+check_dropped session-id-eq --session-id=x
+check_dropped from-pr-eq --from-pr=7
+check_dropped teleport --teleport
+check_dropped teleport-value '--teleport t1'
+check_dropped teleport-eq --teleport=t1
+
+setup after-dashdash
+echo 'switch' > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch_lines='--model
+opus
+-c
+--
+-c
+a b
+--resume'
+launch
+it 'args after -- are untouched and values with spaces survive'
+if args_are 2 --resume s1 go --model opus -- -c 'a b' --resume; then pass; else fail; fi
+launch_lines=
+
+setup spaces
+echo 'switch' > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch_lines='-p
+hello world
+--continue'
+launch
+it 'a value with spaces arrives as one argument'
+if args_are 2 --resume s1 go -p 'hello world'; then pass; else fail; fi
+launch_lines=
 
 setup keeps-order
 echo 'switch' > "$case_dir/fake/mode-1"

@@ -32,7 +32,7 @@ TEST_SH=dash sh test/launcher.test.sh
 
 - POSIX `sh` only.
 - Reads plain `key=value` state files. No `jq`, no JSON.
-- Passes the user's arguments through untouched on the first launch. On relaunch it drops session flags (`-c`, `-r`, `--resume`, `--session-id`, `--fork-session`, `--from-pr`, `--teleport`) and the order is `claude --resume <session> <handover> <original args>`, or plain `claude <original args>` when the request has no session.
+- Passes the user's arguments through untouched on the first launch. On relaunch it drops session flags (`-c`, `-r`, `--resume`, `--session-id`, `--fork-session`, `--from-pr`, `--teleport`) stopping at `--`, and the order is `claude --resume <session> <handover> <original args>`, or plain `claude <original args>` when the request has no session.
 
 ## Plugin rules
 

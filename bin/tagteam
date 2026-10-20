@@ -85,9 +85,12 @@ while :; do
       shift
       i=$((i + 1))
       case $a in
+        --)
+          set -- "$@" "$a"
+          while [ "$i" -lt "$n" ]; do set -- "$@" "$1"; shift; i=$((i + 1)); done ;;
         -c | --continue | --fork-session | --session-id=* | --resume=* | --from-pr=* | --teleport=*) ;;
         -r | --resume | --from-pr | --teleport | --session-id)
-          # The value is optional except for --session-id: skip a following non-flag word.
+          # A bare -r/--resume eats the next non-flag word on purpose: claude reads it as the value.
           if [ "$i" -lt "$n" ]; then
             case $1 in -*) ;; *) shift; i=$((i + 1)) ;; esac
           fi ;;
