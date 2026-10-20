@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/jpo-oss/tagteam/compare/v0.3.0...v0.3.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* say when a full account resets instead of limited ([#17](https://github.com/jpo-oss/tagteam/issues/17)) ([12b388e](https://github.com/jpo-oss/tagteam/commit/12b388e20166e843005e2ffee618ec692534d4ca))
+
 ## [0.3.0](https://github.com/jpo-oss/tagteam/compare/v0.2.0...v0.3.0) (2026-10-20)
 
 
