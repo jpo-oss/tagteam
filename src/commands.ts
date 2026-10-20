@@ -5,7 +5,7 @@ import type { Account } from './types'
 
 export type Deps = {
   login(io: Io, dir: string): Promise<void>
-  logout(io: Io, dir: string): Promise<void>
+  logout(io: Io, dir: string): Promise<boolean>
   confirm(question: string): Promise<boolean>
 }
 
@@ -27,11 +27,26 @@ export function parseArgs(args: string): { sub: string; label?: string; opts: Re
   return { sub, label, opts }
 }
 
-const rmUnderRoot = async (io: Io, dir: string): Promise<void> => {
-  const root = await stateRoot(io)
-  if (!dir.startsWith(`${root}/`) || dir.includes('/../') || dir.endsWith('/..')) throw new Error(`Refusing to delete ${dir}: not inside ${root}`)
-  await io.run(['rm', '-rf', dir])
+export const assertUnderRoot = async (io: Io, dir: string): Promise<void> => {
+  const root = (await stateRoot(io)).replace(/\/+$/, '')
+  const bad =
+    !dir.startsWith(`${root}/`) ||
+    dir === `${root}/` ||
+    dir.split('/').includes('..') ||
+    dir === `${root}/state` ||
+    dir.startsWith(`${root}/state/`)
+  if (bad) throw new Error(`Refusing to touch ${dir}: not an account folder inside ${root}`)
 }
+
+const rmUnderRoot = async (io: Io, dir: string): Promise<void> => {
+  await assertUnderRoot(io, dir)
+  const r = await io.run(['rm', '-rf', dir])
+  if (r.exitCode !== 0) throw new Error(`Could not delete ${dir}: ${r.stderr.trim()}`)
+}
+
+const LABEL_MSG = 'Labels are lowercase letters, digits and dashes, up to 32 characters.'
+const labelProblem = (l: string): string | undefined =>
+  !validLabel(l) ? LABEL_MSG : l === 'state' ? '"state" is reserved.' : undefined
 
 const identity = async (io: Io, dir: string): Promise<{ uuid?: string; email: string }> => {
   const j = await readJson<{ oauthAccount?: { accountUuid?: string; emailAddress?: string } }>(io, `${dir}/.claude.json`, {})
@@ -42,6 +57,7 @@ async function add(io: Io, label: string, deps: Deps): Promise<string> {
   const root = await stateRoot(io)
   const dir = `${root}/${label}`
   if ((await listAccounts(io)).some((a) => a.label === label) || (await io.exists(dir))) return `${label} already exists.`
+  let saved = false
   try {
     await prepareFolder(io, dir)
     await deps.login(io, dir)
@@ -50,22 +66,33 @@ async function add(io: Io, label: string, deps: Deps): Promise<string> {
     const accounts = await listAccounts(io)
     const dup = accounts.find((a) => a.accountUuid === uuid)
     if (dup) {
-      await rmUnderRoot(io, dir)
+      await cleanup(io, dir, label, saved, deps)
       return `That login is already the account "${dup.label}". Nothing added.`
     }
     const account: Account = { label, dir, accountUuid: uuid, email, order: accounts.length, excluded: false, needsSignIn: false }
     await saveAccount(io, account)
+    saved = true
     if (!(await readActive(io))) await writeActive(io, account)
     return `Added ${label} (${email}). The browser signs in whichever claude.ai account it already has open, so check it matches.`
   } catch (err) {
-    await rmUnderRoot(io, dir).catch(() => undefined)
+    await cleanup(io, dir, label, saved, deps)
     return `Could not add ${label}: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
+const cleanup = async (io: Io, dir: string, label: string, saved: boolean, deps: Deps): Promise<void> => {
+  await deps.logout(io, dir).catch(() => undefined)
+  await rmUnderRoot(io, dir).catch(() => undefined)
+  if (saved) await removeAccountRecord(io, label).catch(() => undefined)
+}
+
+const EDIT_KEYS = ['name', 'order', 'exclude']
+
 async function edit(io: Io, label: string, opts: Record<string, string>): Promise<string> {
   const a = (await listAccounts(io)).find((x) => x.label === label)
   if (!a) return `No account named ${label}.`
+  const unknown = Object.keys(opts).filter((k) => !EDIT_KEYS.includes(k))
+  if (unknown.length) return `Unknown option ${unknown.join(', ')}. Valid options: ${EDIT_KEYS.join(', ')}.`
   const next = { ...a }
   if (opts.order !== undefined) {
     if (!/^\d+$/.test(opts.order)) return 'order must be a whole number.'
@@ -75,19 +102,26 @@ async function edit(io: Io, label: string, opts: Record<string, string>): Promis
     if (opts.exclude !== 'true' && opts.exclude !== 'false') return 'exclude must be true or false.'
     next.excluded = opts.exclude === 'true'
   }
-  if (opts.name !== undefined && opts.name !== label) {
-    const name = opts.name
-    if (!validLabel(name)) return 'Names are lowercase letters, digits and dashes, up to 32 characters.'
+  const rename = opts.name !== undefined && opts.name !== label
+  if (rename) {
+    const name = opts.name!
+    const problem = labelProblem(name)
+    if (problem) return problem
     const root = await stateRoot(io)
     if ((await listAccounts(io)).some((x) => x.label === name) || (await io.exists(`${root}/${name}`))) return `${name} already exists.`
-    const r = await io.run(['mv', a.dir, `${root}/${name}`])
-    if (r.exitCode !== 0) return `Could not rename: ${r.stderr.trim()}`
+    await assertUnderRoot(io, a.dir)
     next.label = name
     next.dir = `${root}/${name}`
-    await removeAccountRecord(io, label)
   }
   await saveAccount(io, next)
-  if (next.label !== label && (await readActive(io)) === label) await writeActive(io, next)
+  if (!rename) return `Updated ${label}.`
+  const r = await io.run(['mv', a.dir, next.dir])
+  if (r.exitCode !== 0) {
+    await removeAccountRecord(io, next.label)
+    throw new Error(`Could not rename: ${r.stderr.trim()}`)
+  }
+  await removeAccountRecord(io, label)
+  if ((await readActive(io)) === label) await writeActive(io, next)
   return `Updated ${next.label}.`
 }
 
@@ -95,11 +129,12 @@ async function remove(io: Io, label: string, deps: Deps): Promise<string> {
   const a = (await listAccounts(io)).find((x) => x.label === label)
   if (!a) return `No account named ${label}.`
   if ((await readActive(io)) === label) return `${label} is the active account. Switch to another first.`
+  await assertUnderRoot(io, a.dir)
   if (!(await deps.confirm(`Remove ${label} (${a.email}) and sign it out?`))) return 'Cancelled.'
-  await deps.logout(io, a.dir)
+  const signedOut = await deps.logout(io, a.dir)
   await rmUnderRoot(io, a.dir)
   await removeAccountRecord(io, label)
-  return `Removed ${label}.`
+  return signedOut ? `Removed ${label}.` : `Removed ${label}, but sign-out failed. Sign out of that login at claude.ai if needed.`
 }
 
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
@@ -107,7 +142,8 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
   if (sub === 'switch' || sub === 'status' || sub === 'install') return NOT_YET
   if (sub !== 'add' && sub !== 'edit' && sub !== 'remove') return USAGE
   if (!label) return USAGE
-  if (!validLabel(label)) return 'Labels are lowercase letters, digits and dashes, up to 32 characters.'
+  const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
+  if (problem) return problem
   try {
     await io.run(['true'])
   } catch {
