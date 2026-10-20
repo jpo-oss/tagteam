@@ -8,6 +8,11 @@ Bug reports and pull requests are welcome. For anything bigger than a fix, open 
 - Commit messages and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`fix: ...`, `feat: ...`, `docs: ...`).
 - Don't edit the version in `plugin.json` or `marketplace.json`, or the changelog. The release tooling does that.
 
+## Releases
+
+- Release PRs are opened by release-please. They don't trigger CI on their own, so re-run the check before merging.
+- `release-as` in `release-please-config.json` forces the first release to 0.1.0. Remove it after that release.
+
 ## Checks
 
 CI runs all of these except the type check, which is local only. Run them before opening a PR:
