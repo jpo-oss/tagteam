@@ -1,0 +1,132 @@
+import type { Io } from './io'
+import type { Account, SwitchRequest, Usage } from './types'
+import { emptyUsage } from './usage'
+
+const ABANDONED_MS = 10 * 60_000
+
+const mustRun = async (io: Io, argv: string[]): Promise<void> => {
+  const r = await io.run(argv)
+  if (r.exitCode !== 0) throw new Error(`${argv.join(' ')} failed (${r.exitCode}): ${r.stderr.trim()}`)
+}
+
+const dirOf = (p: string): string => p.slice(0, p.lastIndexOf('/')) || '/'
+const oneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
+
+export const stateRoot = async (io: Io): Promise<string> => {
+  const home = await io.env('TAGTEAM_HOME')
+  return home ? home : `${await io.env('HOME')}/.claude-accounts`
+}
+
+const stateDir = async (io: Io): Promise<string> => `${await stateRoot(io)}/state`
+
+export const readJson = async <T>(io: Io, path: string, fallback: T): Promise<T> => {
+  const text = await io.read(path)
+  return text === undefined || text.trim() === '' ? fallback : (JSON.parse(text) as T)
+}
+
+const writeAtomic = async (io: Io, path: string, text: string): Promise<void> => {
+  await mustRun(io, ['mkdir', '-p', dirOf(path)])
+  const tmp = `${path}.tmp-${Math.random().toString(36).slice(2)}`
+  await io.write(tmp, text)
+  const r = await io.run(['mv', tmp, path])
+  if (r.exitCode !== 0) {
+    await io.run(['rm', '-f', tmp])
+    throw new Error(`mv ${tmp} ${path} failed (${r.exitCode}): ${r.stderr.trim()}`)
+  }
+}
+
+export const writeJsonAtomic = (io: Io, path: string, value: unknown): Promise<void> =>
+  writeAtomic(io, path, JSON.stringify(value, null, 2) + '\n')
+
+export const listAccounts = async (io: Io): Promise<Account[]> => {
+  const dir = `${await stateDir(io)}/accounts`
+  const names = (await io.list(dir)).filter((n) => n.endsWith('.json'))
+  const all = await Promise.all(names.map((n) => readJson<Account | undefined>(io, `${dir}/${n}`, undefined)))
+  return all.filter((a): a is Account => a !== undefined).sort((a, b) => a.order - b.order)
+}
+
+export const saveAccount = async (io: Io, a: Account): Promise<void> =>
+  writeJsonAtomic(io, `${await stateDir(io)}/accounts/${a.label}.json`, a)
+
+export const removeAccountRecord = async (io: Io, label: string): Promise<void> =>
+  mustRun(io, ['rm', '-f', `${await stateDir(io)}/accounts/${label}.json`])
+
+export const loadUsage = async (io: Io, uuid: string): Promise<Usage> =>
+  readJson(io, `${await stateDir(io)}/usage/${uuid}.json`, emptyUsage(uuid))
+
+export const saveUsage = async (io: Io, u: Usage): Promise<void> =>
+  writeJsonAtomic(io, `${await stateDir(io)}/usage/${u.accountUuid}.json`, u)
+
+export const readActive = async (io: Io): Promise<string | undefined> => {
+  const text = await io.read(`${await stateDir(io)}/active`)
+  return text?.split('\n')[0]?.trim() || undefined
+}
+
+export const writeActive = async (io: Io, a: Account): Promise<void> => {
+  const dir = await stateDir(io)
+  await writeAtomic(io, `${dir}/active`, `${oneLine(a.label)}\n`)
+  await writeAtomic(io, `${dir}/active-dir`, `${oneLine(a.dir)}\n`)
+}
+
+export const writeSwitchRequest = async (io: Io, r: SwitchRequest): Promise<void> => {
+  const lines = [
+    ['session', r.session],
+    ['target_label', r.targetLabel],
+    ['target_dir', r.targetDir],
+    ['resume_at', r.resumeAt === undefined ? '' : String(r.resumeAt)],
+    ['reason', r.reason],
+    ['handover', r.handover],
+    ['stall', String(r.stallSeconds)],
+  ]
+  const text = lines.map(([k, v]) => `${k}=${oneLine(v)}\n`).join('')
+  await writeAtomic(io, `${await stateDir(io)}/switch-${r.run}`, text)
+}
+
+const snoozeKey = (uuid: string, kind: string): string => `${uuid}:${kind}`
+
+export const snoozed = async (io: Io, uuid: string, kind: string, resetsAt: string): Promise<boolean> =>
+  (await readJson<Record<string, string>>(io, `${await stateDir(io)}/snoozes.json`, {}))[snoozeKey(uuid, kind)] === resetsAt
+
+export const snooze = async (io: Io, uuid: string, kind: string, resetsAt: string): Promise<void> => {
+  const path = `${await stateDir(io)}/snoozes.json`
+  const all = await readJson<Record<string, string>>(io, path, {})
+  all[snoozeKey(uuid, kind)] = resetsAt
+  await writeJsonAtomic(io, path, all)
+}
+
+const decisionDir = async (io: Io, uuid: string): Promise<string> => `${await stateDir(io)}/decision-${uuid}`
+
+const isAbandoned = async (io: Io, dir: string): Promise<boolean> => {
+  if (await io.exists(`${dir}/answer`)) return false
+  const m = await io.mtimeMs(dir)
+  return m !== undefined && (await io.now()) - m > ABANDONED_MS
+}
+
+export const claimDecision = async (io: Io, uuid: string): Promise<boolean> => {
+  const dir = await decisionDir(io, uuid)
+  await mustRun(io, ['mkdir', '-p', dirOf(dir)])
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await io.run(['mkdir', dir])
+    if (r.exitCode === 0) return true
+    if (!(await io.exists(dir))) throw new Error(`mkdir ${dir} failed (${r.exitCode}): ${r.stderr.trim()}`)
+    if (!(await isAbandoned(io, dir))) return false
+    await mustRun(io, ['rm', '-rf', dir])
+  }
+  return false
+}
+
+export const releaseDecision = async (io: Io, uuid: string, answer: 'yes' | 'no'): Promise<void> =>
+  writeAtomic(io, `${await decisionDir(io, uuid)}/answer`, `${answer}\n`)
+
+export const awaitDecision = async (io: Io, uuid: string): Promise<'yes' | 'no'> => {
+  const dir = await decisionDir(io, uuid)
+  for (;;) {
+    const answer = (await io.read(`${dir}/answer`))?.trim()
+    if (answer === 'yes' || answer === 'no') return answer
+    if (!(await io.exists(dir)) || (await isAbandoned(io, dir))) {
+      await mustRun(io, ['rm', '-rf', dir])
+      return 'no'
+    }
+    await io.sleep(1000)
+  }
+}
