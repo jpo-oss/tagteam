@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/jpo-oss/tagteam/compare/v0.3.2...v0.3.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* plain status line, shown only near a limit ([#21](https://github.com/jpo-oss/tagteam/issues/21)) ([f7f7753](https://github.com/jpo-oss/tagteam/commit/f7f77534536bfd5a0bff85acf5f6a4fd5a712591))
+
 ## [0.3.2](https://github.com/jpo-oss/tagteam/compare/v0.3.1...v0.3.2) (2026-10-20)
 
 
