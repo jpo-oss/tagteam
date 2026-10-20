@@ -24,7 +24,8 @@ export const register: Register = (on, options) => {
       $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
     }
     try {
-      for (const note of await adoptFolders(ioFrom($))) $.ui.toast(note)
+      const log = (t: string) => $.ui.log(t, { to: 'debug' })
+      for (const note of await adoptFolders(ioFrom($), log)) $.ui.toast(note)
     } catch (err) {
       $.ui.log(`tagteam: adding terminal sign-ins failed: ${message(err)}`, { to: 'debug' })
     }

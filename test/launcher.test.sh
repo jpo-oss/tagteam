@@ -3,7 +3,6 @@
 cd "$(dirname "$0")/.." || exit 1
 repo=$(pwd)
 fails=0
-launch_input=
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -14,7 +13,7 @@ setup() {
   : > "$case_dir/fake/log"
 }
 
-# launch_input is stdin. launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
+# launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
 launch() {
   (
     unset CLAUDE_CONFIG_DIR
@@ -30,7 +29,7 @@ launch() {
       # shellcheck disable=SC2086
       set -- ${launch_args:---model opus}
     fi
-    printf '%s' "$launch_input" | "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" >"$case_dir/out" 2>&1
+    "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" </dev/null >"$case_dir/out" 2>&1
   )
 }
 
@@ -239,6 +238,7 @@ setup header
 it 'keeps the header line the plugin uses to recognise an installed launcher'
 if sed -n 2p bin/tagteam | grep -q '^# Runs claude on the active tagteam account'; then pass; else fail; fi
 
+# remove reads its y/N from /dev/tty; TAGTEAM_CONFIRM answers instead, for these tests only.
 # record <label> <dir> <email> <order> <excluded>, in the plugin's JSON layout
 record() {
   mkdir -p "$case_dir/home/state/accounts"
@@ -260,8 +260,9 @@ setup add-dup-email
 record main "$case_dir/home/main" a@example.com 0 false
 launch_args='add work'
 launch; code=$?
-it 'add warns when another account already has that email'
-if [ "$code" = 0 ] && out_has 'already the account main'; then pass; else fail; fi
+it 'add of a login that is already an account signs the new folder out and deletes it'
+if [ "$code" != 0 ] && [ ! -e "$case_dir/home/work" ] && authed "logout $case_dir/home/work" &&
+  out_has 'Nothing added: that login is already main'; then pass; else fail; fi
 
 setup add-bad-label
 launch_args='add Work'
@@ -287,38 +288,42 @@ setup add-fails
 echo fail > "$case_dir/fake/login"
 launch_args='add work'
 launch; code=$?
-it 'a failed sign-in removes the new folder'
-if [ "$code" != 0 ] && [ ! -e "$case_dir/home/work" ] && out_has 'not added'; then pass; else fail; fi
+it 'a failed sign-in signs out and removes the new folder'
+if [ "$code" != 0 ] && [ ! -e "$case_dir/home/work" ] && authed "logout $case_dir/home/work" && out_has 'not added'; then pass; else fail; fi
 
 setup remove-active
 mkdir -p "$case_dir/home/work"
 record work "$case_dir/home/work" w@example.com 0 false
 echo work > "$case_dir/home/state/active"
-launch_args='remove work' launch_input=y
-launch; code=$?
+launch_args='remove work'
+launch TAGTEAM_CONFIRM=y; code=$?
 it 'remove refuses the active account'
 if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'active account'; then pass; else fail; fi
 
 setup remove-outside
-mkdir -p "$case_dir/outside" "$case_dir/home/state/x"
+mkdir -p "$case_dir/outside" "$case_dir/home/state/x" "$case_dir/home/a/b"
 record x "$case_dir/outside" x@example.com 0 false
 record y "$case_dir/home/state/x" y@example.com 1 false
 record z "$case_dir/home/a/../../outside" z@example.com 2 false
-launch_args='remove x' launch_input=y
-launch; c1=$?
-launch_args='remove y'
-launch; c2=$?
-launch_args='remove z'
-launch; c3=$?
-it 'remove refuses a folder outside the root, in state, or with ..'
-if [ "$c1" != 0 ] && [ "$c2" != 0 ] && [ "$c3" != 0 ] && [ -d "$case_dir/outside" ] && [ -d "$case_dir/home/state/x" ] &&
-  [ -f "$case_dir/home/state/accounts/x.json" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'refusing'; then pass; else fail; fi
+record r1 "$case_dir/home//" r1@example.com 3 false
+record r2 "$case_dir/home//state" r2@example.com 4 false
+record r3 "$case_dir/home/a/b" r3@example.com 5 false
+record r4 "$case_dir/home/../outside" r4@example.com 6 false
+refused=0
+for l in x y z r1 r2 r3 r4; do
+  launch_args="remove $l"
+  launch TAGTEAM_CONFIRM=y && continue
+  grep -q refusing "$case_dir/out" && refused=$((refused + 1))
+done
+it 'remove refuses anything but one account folder right under the root'
+if [ "$refused" = 7 ] && [ -d "$case_dir/outside" ] && [ -d "$case_dir/home/state/x" ] && [ -d "$case_dir/home/a/b" ] &&
+  [ -f "$case_dir/home/state/accounts/x.json" ] && [ ! -e "$case_dir/fake/auth" ]; then pass; else fail; fi
 
 setup remove-no
 mkdir -p "$case_dir/home/work"
 record work "$case_dir/home/work" w@example.com 0 false
-launch_args='remove work' launch_input=n
-launch; code=$?
+launch_args='remove work'
+launch TAGTEAM_CONFIRM=n; code=$?
 it 'remove answered n keeps everything'
 if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ -f "$case_dir/home/state/accounts/work.json" ] &&
   [ ! -e "$case_dir/fake/auth" ] && out_has 'Remove work (w@example.com)? [y/N]'; then pass; else fail; fi
@@ -326,12 +331,11 @@ if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ -f "$case_dir/home/stat
 setup remove-yes
 mkdir -p "$case_dir/home/work"
 record work "$case_dir/home/work" w@example.com 0 false
-launch_args='remove work' launch_input=y
-launch; code=$?
+launch_args='remove work'
+launch TAGTEAM_CONFIRM=y; code=$?
 it 'remove answered y signs out, deletes the folder and the record'
 if [ "$code" = 0 ] && authed "logout $case_dir/home/work" && [ ! -e "$case_dir/home/work" ] &&
   [ ! -e "$case_dir/home/state/accounts/work.json" ] && out_has 'Removed work.'; then pass; else fail; fi
-launch_input=
 
 setup list
 record zed "$case_dir/home/zed" z@example.com 0 true

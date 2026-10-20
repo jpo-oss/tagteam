@@ -16,7 +16,7 @@ export function seedAppState(home: Readonly<Obj>): Obj {
   return Object.fromEntries(Object.entries(home).filter(([k]) => !ACCOUNT_KEYS.some((re) => re.test(k))))
 }
 
-// Login keys never come from the seed, so the account's own stay as they are.
+// Home's non-login keys win. The seed holds no login keys, so the account's own are never touched.
 export const withSeed = (account: Readonly<Obj>, home: Readonly<Obj>): Obj => ({ ...account, ...seedAppState(home) })
 
 const trustFlags = (p: unknown) =>

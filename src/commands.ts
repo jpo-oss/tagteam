@@ -31,15 +31,15 @@ export function parseArgs(args: string): { sub: string; label?: string; opts: Re
   return { sub, label, opts }
 }
 
+const LABEL_MSG = 'Labels are lowercase letters, digits and dashes, up to 32 characters.'
+const labelProblem = (l: string): string | undefined =>
+  !validLabel(l) ? LABEL_MSG : l === 'state' ? '"state" is reserved.' : undefined
+
+// Only ever one valid label right under the root, so a bad record can't point rm -rf anywhere else.
 export const assertUnderRoot = async (io: Io, dir: string): Promise<void> => {
   const root = (await stateRoot(io)).replace(/\/+$/, '')
-  const bad =
-    !dir.startsWith(`${root}/`) ||
-    dir === `${root}/` ||
-    dir.split('/').includes('..') ||
-    dir === `${root}/state` ||
-    dir.startsWith(`${root}/state/`)
-  if (bad) throw new Error(`Refusing to touch ${dir}: not an account folder inside ${root}`)
+  const rest = dir.startsWith(`${root}/`) ? dir.slice(root.length + 1) : ''
+  if (labelProblem(rest)) throw new Error(`Refusing to touch ${dir}: not an account folder inside ${root}`)
 }
 
 const rmUnderRoot = async (io: Io, dir: string): Promise<void> => {
@@ -47,10 +47,6 @@ const rmUnderRoot = async (io: Io, dir: string): Promise<void> => {
   const r = await io.run(['rm', '-rf', dir])
   if (r.exitCode !== 0) throw new Error(`Could not delete ${dir}: ${r.stderr.trim()}`)
 }
-
-const LABEL_MSG = 'Labels are lowercase letters, digits and dashes, up to 32 characters.'
-const labelProblem = (l: string): string | undefined =>
-  !validLabel(l) ? LABEL_MSG : l === 'state' ? '"state" is reserved.' : undefined
 
 const identity = async (io: Io, dir: string): Promise<{ uuid?: string; email: string }> => {
   const j = await readJson<{ oauthAccount?: { accountUuid?: string; emailAddress?: string } }>(io, `${dir}/.claude.json`, {})
@@ -83,24 +79,24 @@ async function add(io: Io, label: string, deps: Deps): Promise<string> {
     await deps.login(io, dir)
     const { account, dup } = await enroll(io, label, dir, async () => undefined)
     if (dup) {
-      await cleanup(io, dir, label, deps)
+      await cleanup(io, dir, label, deps.logout)
       return `That login is already the account "${dup.label}". Nothing added.`
     }
     return `Added ${label} (${account!.email}). The browser signs in whichever claude.ai account it already has open, so check it matches.`
   } catch (err) {
-    await cleanup(io, dir, label, deps)
+    await cleanup(io, dir, label, deps.logout)
     return `Could not add ${label}: ${err instanceof Error ? err.message : String(err)}`
   }
 }
 
-const cleanup = async (io: Io, dir: string, label: string, deps: Deps): Promise<void> => {
-  await deps.logout(io, dir).catch(() => undefined)
+const cleanup = async (io: Io, dir: string, label: string, signOut: Deps['logout']): Promise<void> => {
+  await signOut(io, dir).catch(() => undefined)
   await rmUnderRoot(io, dir).catch(() => undefined)
   await removeAccountRecord(io, label).catch(() => undefined)
 }
 
 // Picks up folders that `tagteam add` signed in from a terminal, which leaves the record to the plugin.
-export async function adoptFolders(io: Io): Promise<string[]> {
+export async function adoptFolders(io: Io, log: (text: string) => void, signOut: Deps['logout'] = logout): Promise<string[]> {
   const root = await stateRoot(io)
   const accounts = await listAccounts(io)
   const taken = new Set(accounts.flatMap((a) => [a.label, a.dir]))
@@ -108,13 +104,20 @@ export async function adoptFolders(io: Io): Promise<string[]> {
   for (const label of await io.list(root)) {
     const dir = `${root}/${label}`
     if (labelProblem(label) || taken.has(label) || taken.has(dir)) continue
-    if (!(await identity(io, dir).catch(() => undefined))?.uuid) continue
-    const { account, dup } = await enroll(io, label, dir, async () => {
-      await linkShared(io, dir)
-      const file = `${dir}/.claude.json`
-      await writeJsonAtomic(io, file, withSeed(await readJson(io, file, {}), await homeAppState(io)))
-    })
-    notes.push(dup ? `Not adding ${label}: it's the same login as ${dup.label}.` : `Added ${label} (${account!.email})`)
+    try {
+      if (!(await identity(io, dir).catch(() => undefined))?.uuid) continue
+      const { account, dup } = await enroll(io, label, dir, async () => {
+        await linkShared(io, dir)
+        const file = `${dir}/.claude.json`
+        await writeJsonAtomic(io, file, withSeed(await readJson(io, file, {}), await homeAppState(io)))
+      })
+      if (dup) {
+        await cleanup(io, dir, label, signOut)
+        notes.push(`Removed ${label}: same login as ${dup.label}`)
+      } else notes.push(`Added ${label} (${account!.email})`)
+    } catch (err) {
+      log(`tagteam: could not add ${dir}: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
   return notes
 }
