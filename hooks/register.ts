@@ -1,7 +1,7 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
 import { realDeps, refreshLauncher, runCommand } from '../src/commands'
-import { drawPane, paneRows } from '../src/pane'
+import { drawError, drawPane, paneRows } from '../src/pane'
 import { recordMeasure, recordTurn } from '../src/session'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
 
@@ -41,7 +41,12 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'Pane', requestId: 'tagteam' }, async ($, e) => {
     const io = ioFrom($)
-    return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns)
+    try {
+      return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns)
+    } catch (err) {
+      $.ui.log(`tagteam: dashboard failed: ${message(err)}`, { to: 'debug' })
+      return drawError($.ui.resolve(e), message(err))
+    }
   })
 
   on('session.measure', async ($, e, next) => {
