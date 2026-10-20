@@ -53,7 +53,7 @@ Claude Code doesn't auto-update plugins from third-party marketplaces like this 
    /tagteam status
    ```
 
-   ![The tagteam dashboard beside a chat: one bordered card per account with 5-hour and weekly usage bars, reset times and tokens, the active account highlighted](docs/images/dashboard.png)
+   ![The tagteam dashboard beside a chat: one bordered card per account with 5-hour and weekly usage bars, reset times and tokens, the account this session uses highlighted](docs/images/dashboard.png)
 
 4. When the account you're on reaches the threshold, tagteam asks whether to switch. Say yes and the session closes and reopens on the account with the most room. With auto switch on, it switches without asking and tells you.
 
@@ -63,20 +63,22 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `/tagteam` or `/tagteam status` | Opens the dashboard: each account's usage windows, reset times, input/output tokens and the auto switch setting |
+| `/tagteam` or `/tagteam status` | Opens the dashboard: each account's usage windows, reset times, input/output tokens and the auto switch setting. It updates live. |
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
+| `/tagteam refresh` | Sends a one-line prompt from each account so the dashboard shows its current usage. New accounts get this on their own. |
 | `/tagteam remove <label>` | Signs the account out and deletes its folder. You can't remove the active account. |
 
 You can also manage accounts from a terminal, outside Claude. This is the way to add one on a remote machine: it prints the sign-in link, and you can open it on any device and paste the code back.
 
 | Command | What it does |
 |---|---|
-| `tagteam add <label>` | Signs a new account in. Claude picks it up at the next session start. |
+| `tagteam add <label>` | Signs a new account in and checks its usage. Claude picks it up at the next session start. |
 | `tagteam remove <label>` | Asks first, then signs the account out and deletes its folder |
 | `tagteam list` | Lists the accounts, marking the active one |
+| `tagteam refresh` | Same as `/tagteam refresh`, then lists the accounts |
 
-Only `add`, `remove` and `list` as the first word are tagteam's. Anything else goes to Claude, and `tagteam -- add` sends `add` to Claude as a prompt.
+Only `add`, `remove`, `list` and `refresh` as the first word are tagteam's. Anything else goes to Claude, and `tagteam -- add` sends `add` to Claude as a prompt.
 
 If an account's login lapses, sign it in again with `/tagteam remove <label>` and then `/tagteam add <label>`. Switch away from it first if it's the active one.
 

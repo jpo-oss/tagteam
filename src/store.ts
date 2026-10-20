@@ -60,6 +60,16 @@ export const loadUsage = async (io: Io, uuid: string): Promise<Usage> =>
 export const saveUsage = async (io: Io, u: Usage): Promise<void> =>
   writeJsonAtomic(io, `${await stateDir(io)}/usage/${u.accountUuid}.json`, u)
 
+// Changes whenever any session on this machine writes an account, a reading or the default.
+export const stateStamp = async (io: Io): Promise<string> => {
+  const dir = await stateDir(io)
+  const parts = [`active:${await io.mtimeMs(`${dir}/active`)}`]
+  for (const sub of ['accounts', 'usage']) {
+    for (const n of await io.list(`${dir}/${sub}`)) parts.push(`${sub}/${n}:${await io.mtimeMs(`${dir}/${sub}/${n}`)}`)
+  }
+  return parts.join('|')
+}
+
 export const readActive = async (io: Io): Promise<string | undefined> => {
   const text = await io.read(`${await stateDir(io)}/active`)
   return text?.split('\n')[0]?.trim() || undefined
