@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/jpo-oss/tagteam/compare/v0.3.1...v0.3.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* show the subcommands as a hint after /tagteam ([#19](https://github.com/jpo-oss/tagteam/issues/19)) ([e5c48fa](https://github.com/jpo-oss/tagteam/commit/e5c48fa581cf77726bceaea8bb564174d5680bcc))
+
 ## [0.3.1](https://github.com/jpo-oss/tagteam/compare/v0.3.0...v0.3.1) (2026-10-20)
 
 
