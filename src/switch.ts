@@ -8,7 +8,7 @@ import {
   releaseDecision, snooze, snoozed, stateRoot, writeActive, writeJsonAtomic, writeSwitchRequest,
 } from './store'
 import type { Account, Settings, Usage, Window } from './types'
-import { effectivePercent } from './usage'
+import { effectivePercent, windowName } from './usage'
 
 export type SwitchUi = {
   ask(question: string, options: string[]): Promise<string>
@@ -198,7 +198,8 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   if (!top) return
   const { w } = top
   const pct = Math.round(top.pct)
-  const said = `${current?.label ?? 'This account'} is at ${pct}% of its ${w.kind} limit`
+  const name = windowName(w.kind)
+  const said = `${current?.label ?? 'This account'} is at ${pct}% of its ${name} limit`
   const episode = `${uuid}:${w.kind}:${w.resetsAt ?? ''}`
 
   if (!run || !current) {
@@ -227,10 +228,10 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   }
   await requestSwitch(ctx, {
     from: current.label, target, resumeAt, key: episode,
-    reason: `${current.label} reached ${pct}% of its ${w.kind} limit`,
+    reason: `${current.label} reached ${pct}% of its ${name} limit`,
     toast: resumeAt === undefined
-      ? `Switched from ${current.label} (${pct}% ${w.kind}) to ${to}`
-      : `${current.label} (${pct}% ${w.kind}) is closing and resumes on ${target.label} at ${when(resumeAt, now)}`,
+      ? `Switched from ${current.label} (${pct}% ${name}) to ${to}`
+      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} at ${when(resumeAt, now)}`,
   })
 }
 

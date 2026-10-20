@@ -7,6 +7,9 @@ export const emptyUsage = (accountUuid: string): Usage => ({
   earlyResets: [],
 })
 
+const NAMES: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
+export const windowName = (kind: string): string => NAMES[kind] ?? kind
+
 const resetTime = (iso?: string): number | undefined => {
   const t = iso ? Date.parse(iso) : NaN
   return Number.isNaN(t) ? undefined : t
