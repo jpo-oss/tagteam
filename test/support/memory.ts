@@ -20,7 +20,10 @@ export const memoryIo = (env: Record<string, string> = {}): Io => {
     const flags = rest.filter((a) => a.startsWith('-')).join('')
     if (cmd === 'mkdir') {
       const p = args[0]!
-      if (flags.includes('p')) return mkdirs(p), ok()
+      if (flags.includes('p')) {
+        if (files.has(p)) return fail(`mkdir: ${p}: File exists`)
+        return mkdirs(p), ok()
+      }
       if (has(p)) return fail(`mkdir: ${p}: File exists`)
       if (!dirs.has(parent(p))) return fail(`mkdir: ${p}: No such file or directory`)
       dirs.set(p, Date.now())
@@ -28,14 +31,15 @@ export const memoryIo = (env: Record<string, string> = {}): Io => {
     }
     if (cmd === 'mv') {
       const [from, to] = args as [string, string]
-      const f = files.get(from)
-      if (!f) return fail(`mv: ${from}: No such file`)
-      files.delete(from)
-      files.set(to, f)
+      if (!has(from)) return fail(`mv: ${from}: No such file or directory`)
+      const re = (k: string) => to + k.slice(from.length)
+      for (const [k, v] of [...files].filter(([k]) => under(from)(k))) (files.delete(k), files.set(re(k), v))
+      for (const [k, v] of [...dirs].filter(([k]) => under(from)(k))) (dirs.delete(k), dirs.set(re(k), v))
       return ok()
     }
     if (cmd === 'rm') {
       for (const p of args) {
+        if (!flags.includes('f') && !has(p)) return fail(`rm: ${p}: No such file or directory`)
         if (!flags.includes('r') && dirs.has(p)) return fail(`rm: ${p}: is a directory`)
         for (const k of [...files.keys()].filter(under(p))) files.delete(k)
         for (const k of [...dirs.keys()].filter(under(p))) dirs.delete(k)

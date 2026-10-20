@@ -13,8 +13,11 @@ const dirOf = (p: string): string => p.slice(0, p.lastIndexOf('/')) || '/'
 const oneLine = (s: string): string => s.replace(/[\r\n]+/g, ' ')
 
 export const stateRoot = async (io: Io): Promise<string> => {
-  const home = await io.env('TAGTEAM_HOME')
-  return home ? home : `${await io.env('HOME')}/.claude-accounts`
+  const override = await io.env('TAGTEAM_HOME')
+  if (override) return override
+  const home = await io.env('HOME')
+  if (!home) throw new Error('Cannot find the state folder: neither TAGTEAM_HOME nor HOME is set')
+  return `${home}/.claude-accounts`
 }
 
 const stateDir = async (io: Io): Promise<string> => `${await stateRoot(io)}/state`
@@ -94,7 +97,13 @@ export const snooze = async (io: Io, uuid: string, kind: string, resetsAt: strin
   await writeJsonAtomic(io, path, all)
 }
 
-const decisionDir = async (io: Io, uuid: string): Promise<string> => `${await stateDir(io)}/decision-${uuid}`
+const episode = (resetsAt?: string): string => {
+  const t = resetsAt ? Date.parse(resetsAt) : NaN
+  return Number.isNaN(t) ? 'none' : String(Math.floor(t / 1000))
+}
+
+const decisionDir = async (io: Io, uuid: string, kind: string, resetsAt?: string): Promise<string> =>
+  `${await stateDir(io)}/decision-${uuid}-${kind}-${episode(resetsAt)}`
 
 const isAbandoned = async (io: Io, dir: string): Promise<boolean> => {
   if (await io.exists(`${dir}/answer`)) return false
@@ -102,31 +111,47 @@ const isAbandoned = async (io: Io, dir: string): Promise<boolean> => {
   return m !== undefined && (await io.now()) - m > ABANDONED_MS
 }
 
-export const claimDecision = async (io: Io, uuid: string): Promise<boolean> => {
-  const dir = await decisionDir(io, uuid)
-  await mustRun(io, ['mkdir', '-p', dirOf(dir)])
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await io.run(['mkdir', dir])
-    if (r.exitCode === 0) return true
-    if (!(await io.exists(dir))) throw new Error(`mkdir ${dir} failed (${r.exitCode}): ${r.stderr.trim()}`)
-    if (!(await isAbandoned(io, dir))) return false
-    await mustRun(io, ['rm', '-rf', dir])
-  }
-  return false
+// Only the caller whose mv succeeds owns the removal.
+const retire = async (io: Io, dir: string): Promise<boolean> => {
+  const stale = `${dir}.stale-${Math.random().toString(36).slice(2)}`
+  if ((await io.run(['mv', dir, stale])).exitCode !== 0) return false
+  await mustRun(io, ['rm', '-rf', stale])
+  return true
 }
 
-export const releaseDecision = async (io: Io, uuid: string, answer: 'yes' | 'no'): Promise<void> =>
-  writeAtomic(io, `${await decisionDir(io, uuid)}/answer`, `${answer}\n`)
+export const claimDecision = async (io: Io, uuid: string, kind: string, resetsAt?: string): Promise<boolean> => {
+  const dir = await decisionDir(io, uuid, kind, resetsAt)
+  await mustRun(io, ['mkdir', '-p', dirOf(dir)])
+  const r = await io.run(['mkdir', dir])
+  if (r.exitCode === 0) return true
+  if (!(await io.exists(dir))) throw new Error(`mkdir ${dir} failed (${r.exitCode}): ${r.stderr.trim()}`)
+  if (!(await isAbandoned(io, dir)) || !(await retire(io, dir))) return false
+  return (await io.run(['mkdir', dir])).exitCode === 0
+}
 
-export const awaitDecision = async (io: Io, uuid: string): Promise<'yes' | 'no'> => {
-  const dir = await decisionDir(io, uuid)
+export const releaseDecision = async (
+  io: Io, uuid: string, kind: string, resetsAt: string | undefined, answer: 'yes' | 'no',
+): Promise<void> => writeAtomic(io, `${await decisionDir(io, uuid, kind, resetsAt)}/answer`, `${answer}\n`)
+
+export const awaitDecision = async (io: Io, uuid: string, kind: string, resetsAt?: string): Promise<'yes' | 'no'> => {
+  const dir = await decisionDir(io, uuid, kind, resetsAt)
   for (;;) {
     const answer = (await io.read(`${dir}/answer`))?.trim()
     if (answer === 'yes' || answer === 'no') return answer
-    if (!(await io.exists(dir)) || (await isAbandoned(io, dir))) {
-      await mustRun(io, ['rm', '-rf', dir])
+    if (!(await io.exists(dir))) return 'no'
+    if (await isAbandoned(io, dir)) {
+      await retire(io, dir)
       return 'no'
     }
     await io.sleep(1000)
+  }
+}
+
+export const pruneDecisions = async (io: Io, now: number): Promise<void> => {
+  const dir = await stateDir(io)
+  for (const name of await io.list(dir)) {
+    if (!name.startsWith('decision-')) continue
+    const last = name.slice(name.lastIndexOf('-') + 1)
+    if (/^\d+$/.test(last) && Number(last) * 1000 <= now) await retire(io, `${dir}/${name}`)
   }
 }

@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Io } from '../src/io'
 import {
   awaitDecision, claimDecision, listAccounts, loadUsage, readActive, releaseDecision,
-  removeAccountRecord, saveAccount, saveUsage, snooze, snoozed, stateRoot, writeActive,
+  pruneDecisions, removeAccountRecord, saveAccount, saveUsage, snooze, snoozed, stateRoot, writeActive,
   writeJsonAtomic, writeSwitchRequest,
 } from '../src/store'
 import type { Account } from '../src/types'
@@ -82,25 +82,70 @@ test('snooze matches only the same reset time', async () => {
   expect(await snoozed(io, 'u', 'seven_day', 'T1')).toBe(false)
 })
 
+const T1 = '2030-01-01T00:00:00Z'
+const T2 = '2030-01-01T05:00:00Z'
+
 test('claimDecision is true once, then false', async () => {
   const { io } = await fresh()
-  expect(await claimDecision(io, 'u1')).toBe(true)
-  expect(await claimDecision(io, 'u1')).toBe(false)
-  expect(await claimDecision(io, 'u2')).toBe(true)
+  expect(await claimDecision(io, 'u1', 'five_hour', T1)).toBe(true)
+  expect(await claimDecision(io, 'u1', 'five_hour', T1)).toBe(false)
+  expect(await claimDecision(io, 'u2', 'five_hour', T1)).toBe(true)
+  expect(await claimDecision(io, 'u1', 'seven_day', T1)).toBe(true)
+})
+
+test('a new window episode can be claimed after an answered one', async () => {
+  const { io } = await fresh()
+  await claimDecision(io, 'u1', 'five_hour', T1)
+  await releaseDecision(io, 'u1', 'five_hour', T1, 'yes')
+  expect(await claimDecision(io, 'u1', 'five_hour', T2)).toBe(true)
 })
 
 test('awaitDecision returns the released answer', async () => {
   const { io } = await fresh()
-  await claimDecision(io, 'u1')
-  const waiting = awaitDecision(io, 'u1')
+  await claimDecision(io, 'u1', 'five_hour', T1)
+  const waiting = awaitDecision(io, 'u1', 'five_hour', T1)
   await io.sleep(50)
-  await releaseDecision(io, 'u1', 'yes')
+  await releaseDecision(io, 'u1', 'five_hour', T1, 'yes')
   expect(await waiting).toBe('yes')
 })
 
-test('an unanswered decision older than 10 minutes is abandoned', async () => {
+test('an unanswered decision older than 10 minutes is abandoned and reclaimed', async () => {
   const { io, root } = await fresh()
-  await claimDecision(io, 'u1')
-  await io.run(['touch', '-t', '200001010000', `${root}/state/decision-u1`])
-  expect(await claimDecision(io, 'u1')).toBe(true)
+  await claimDecision(io, 'u1', 'five_hour')
+  await io.run(['touch', '-t', '200001010000', `${root}/state/decision-u1-five_hour-none`])
+  expect(await claimDecision(io, 'u1', 'five_hour')).toBe(true)
+  expect(await io.list(`${root}/state`)).toEqual(['decision-u1-five_hour-none'])
+})
+
+test('a lost mv race means the claim is false', async () => {
+  const { io, root } = await fresh()
+  await claimDecision(io, 'u1', 'five_hour')
+  await io.run(['touch', '-t', '200001010000', `${root}/state/decision-u1-five_hour-none`])
+  const racing: Io = {
+    ...io,
+    run: async (argv, o) => {
+      if (argv[0] === 'mv') await io.run(argv, o)
+      return io.run(argv, o)
+    },
+  }
+  expect(await claimDecision(racing, 'u1', 'five_hour')).toBe(false)
+})
+
+test('pruneDecisions drops past episodes and keeps future and none', async () => {
+  const { io, root } = await fresh()
+  const past = '2020-01-01T00:00:00Z'
+  await claimDecision(io, 'u1', 'five_hour', past)
+  await claimDecision(io, 'u1', 'seven_day', T1)
+  await claimDecision(io, 'u1', 'x')
+  await pruneDecisions(io, Date.parse('2025-01-01T00:00:00Z'))
+  expect((await io.list(`${root}/state`)).sort()).toEqual([
+    'decision-u1-five_hour-none'.replace('five_hour', 'x'),
+    `decision-u1-seven_day-${Date.parse(T1) / 1000}`,
+  ].sort())
+})
+
+test('stateRoot throws when neither variable is set', async () => {
+  let msg = ''
+  try { await stateRoot(memoryIo()) } catch (e) { msg = String(e) }
+  expect(msg).toContain('TAGTEAM_HOME')
 })
