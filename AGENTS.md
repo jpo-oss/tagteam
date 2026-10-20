@@ -22,7 +22,7 @@ TEST_SH=dash sh test/launcher.test.sh
 - `.claude-plugin/plugin.json`: manifest and the three settings (`autoSwitch`, `threshold`, `stallTimeoutSeconds`).
 - `hooks/register.ts`: wires engine events and the `/tagteam` command to `src/`.
 - `src/usage.ts`, `src/pick.ts`, `src/appstate.ts`: pure logic, no I/O.
-- `src/io.ts`: the `Io` port. Everything else does I/O through it, never through `$` directly.
+- `src/io.ts`: the `Io` port. File, process and env access goes through it, never through `$` directly. UI, command and plugin calls use `$`.
 - `src/store.ts`, `src/session.ts`, `src/folders.ts`, `src/switch.ts`, `src/commands.ts`, `src/pane.tsx`: state, tracking, account folders, switching, commands, dashboard.
 - `bin/tagteam`: the launcher.
 - `test/*.test.ts(x)`: plugin tests on an in-memory `Io` (`test/support/memory.ts`). `test/launcher.test.sh` drives the launcher against `test/fake-claude`.
@@ -30,14 +30,14 @@ TEST_SH=dash sh test/launcher.test.sh
 
 ## Launcher rules
 
-- POSIX `sh` only. Must pass `shellcheck -s sh`. Test with `TEST_SH=dash` too when you can.
+- POSIX `sh` only.
 - Reads plain `key=value` state files. No `jq`, no JSON.
-- Passes the user's arguments through untouched. On relaunch the order is `claude --resume <session> <handover> <original args>`.
+- Passes the user's arguments through untouched. On relaunch the order is `claude --resume <session> <handover> <original args>`, or plain `claude <original args>` when the request has no session.
 
 ## Plugin rules
 
 - ES modules with static `import` only. A module that contains `import()` does not load.
-- No Node APIs. All outside access goes through `$`, wrapped in `Io`.
+- No Node APIs. All outside access goes through `$`, and file, process and env calls go through `Io` on top of it.
 - Pass `$` only to function declarations in other files, not arrow functions. `$.env.get` takes literal names, so add new ones to `EnvName` in `src/io.ts`.
 - `$.fs` has no rename, mkdir or remove. Use `$.process.run` with `mv`, `mkdir`, `rm`.
 - `$.process` is CLI only. Callers must give a clear message on other surfaces.
@@ -55,7 +55,6 @@ TEST_SH=dash sh test/launcher.test.sh
 ## Don'ts
 
 - Don't hand edit the version in `plugin.json` or `marketplace.json`, or `CHANGELOG.md`. Release tooling owns them.
-- Don't add dependencies for what a few lines can do.
 - Don't name anything starting with `claude-`.
 
 ## Commits and PRs
