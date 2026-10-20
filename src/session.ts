@@ -5,10 +5,13 @@ import { addTokens, applyReadings, effectivePercent } from './usage'
 
 export type Ui = { toast(text: string): void; status(text: string): void }
 
-export const currentAccountUuid = async (io: Io): Promise<string | undefined> => {
+export const configFile = async (io: Io): Promise<string> => {
   const dir = await io.env('CLAUDE_CONFIG_DIR')
-  const file = dir ? `${dir}/.claude.json` : `${(await io.env('HOME')) ?? ''}/.claude.json`
-  const text = await io.read(file)
+  return dir ? `${dir}/.claude.json` : `${(await io.env('HOME')) ?? ''}/.claude.json`
+}
+
+export const currentAccountUuid = async (io: Io): Promise<string | undefined> => {
+  const text = await io.read(await configFile(io))
   if (!text) return undefined
   try {
     const uuid = JSON.parse(text)?.oauthAccount?.accountUuid

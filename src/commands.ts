@@ -7,11 +7,12 @@ export type Deps = {
   login(io: Io, dir: string): Promise<void>
   logout(io: Io, dir: string): Promise<boolean>
   confirm(question: string): Promise<boolean>
+  switchTo(label: string): Promise<string>
 }
 
-export const realDeps = (confirm: Deps['confirm']): Deps => ({ login, logout, confirm })
+export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo']): Deps => ({ login, logout, confirm, switchTo })
 
-export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch | status | install'
+export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | install'
 const NOT_YET = 'Not available yet.'
 const TERMINAL = 'Run this from the terminal.'
 
@@ -139,8 +140,8 @@ async function remove(io: Io, label: string, deps: Deps): Promise<string> {
 
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
   const { sub, label, opts } = parseArgs(args)
-  if (sub === 'switch' || sub === 'status' || sub === 'install') return NOT_YET
-  if (sub !== 'add' && sub !== 'edit' && sub !== 'remove') return USAGE
+  if (sub === 'status' || sub === 'install') return NOT_YET
+  if (sub !== 'add' && sub !== 'edit' && sub !== 'remove' && sub !== 'switch') return USAGE
   if (!label) return USAGE
   const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
   if (problem) return problem
@@ -149,6 +150,7 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
   } catch {
     return TERMINAL
   }
+  if (sub === 'switch') return deps.switchTo(label)
   if (sub === 'add') return add(io, label, deps)
   if (sub === 'edit') return edit(io, label, opts)
   return remove(io, label, deps)

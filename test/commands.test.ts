@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@b.c' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', ...over,
 })
 
 test('parseArgs', () => {

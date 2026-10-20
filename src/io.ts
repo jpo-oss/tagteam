@@ -15,7 +15,7 @@ export type Io = {
 }
 
 // $.env.get needs a literal name, so ioFrom lists every variable the mod reads.
-export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR'
+export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR' | 'TAGTEAM_RUN'
 
 type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock'>
 
@@ -31,6 +31,7 @@ export function ioFrom($: Dollar): Io {
     env: async (n) => {
       if (n === 'HOME') return $.env.get('HOME')
       if (n === 'TAGTEAM_HOME') return $.env.get('TAGTEAM_HOME')
+      if (n === 'TAGTEAM_RUN') return $.env.get('TAGTEAM_RUN')
       return $.env.get('CLAUDE_CONFIG_DIR')
     },
     now: () => $.clock.now(),
