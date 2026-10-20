@@ -37,7 +37,7 @@ const setPct = (io: Io, uuid: string, pct: number, resetsAt = RESET) =>
   })
 
 type Calls = { asks: string[]; toasts: string[]; notes: string[]; exits: number; ready?: () => boolean }
-const fakeUi = (answer?: () => Promise<string>): { ui: SwitchUi; calls: Calls } => {
+const fakeUi = (answer?: () => Promise<string>, turns = 1): { ui: SwitchUi; calls: Calls } => {
   const calls: Calls = { asks: [], toasts: [], notes: [], exits: 0 }
   const ui: SwitchUi = {
     ask: async (q) => (calls.asks.push(q), answer ? answer() : 'Yes'),
@@ -45,6 +45,7 @@ const fakeUi = (answer?: () => Promise<string>): { ui: SwitchUi; calls: Calls } 
     notify: async (t) => void calls.notes.push(t),
     cwd: async () => '/w',
     sessionId: async () => 's1',
+    turns: async () => turns,
     exitSoon: (ready) => void (calls.exits++, (calls.ready = ready)),
   }
   return { ui, calls }
@@ -73,6 +74,13 @@ test('auto on: switches to the fresh account, copies trust and tells the user on
   const b = JSON.parse((await io.read('/t/b/.claude.json')) ?? '{}')
   expect(b.projects['/w'].hasTrustDialogAccepted).toBe(true)
   expect(b.theme).toBe('dark')
+})
+
+test('a session with no conversation yet asks the launcher to start fresh', async () => {
+  const io = await setup()
+  const { ui } = fakeUi(undefined, 0)
+  await evaluate(ctx(io, ui), Date.now())
+  expect(await request(io)).toMatchObject({ session: '', target_label: 'b', target_dir: '/t/b' })
 })
 
 test('a decision made mid turn writes nothing until the turn ends', async () => {
@@ -358,6 +366,7 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   on('ui.status', () => ({ value: undefined }))
   on('session.cwd', () => ({ value: '/w' }))
   on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
   on('command.run', (_, e) => (commands.push(e.command), { text: '' }))
   on('clock.after', () => ({ value: undefined }))
   await $.turn.start({ text: 'go', turnId: 't1' } as never)

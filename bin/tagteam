@@ -1,6 +1,7 @@
 #!/bin/sh
 # Runs claude on the active tagteam account and, when the plugin asks for a
-# switch, starts it again on the target account with --resume.
+# switch, starts it again on the target account with --resume (or fresh when
+# there was no conversation yet).
 
 TAGTEAM_HOME=${TAGTEAM_HOME:-$HOME/.claude-accounts}
 TAGTEAM_RUN="$$-$(date +%s)"
@@ -71,12 +72,14 @@ mkdir -p "$state" || exit 1
 dir=$(head -n 1 "$state/active-dir" 2>/dev/null)
 session=
 handover=
+label=
 
 while :; do
   printf 'dir=%s\npid=%s\n' "$dir" "$$" > "$run_file.tmp-$$" && mv "$run_file.tmp-$$" "$run_file"
   watch &
   watcher=$!
   if [ -n "$dir" ]; then CLAUDE_CONFIG_DIR=$dir; export CLAUDE_CONFIG_DIR; else unset CLAUDE_CONFIG_DIR; fi
+  started=$(date +%s)
   # The handover goes first: claude takes the first bare word as the prompt and
   # ignores the rest, so a prompt in the original args must not displace it.
   if [ -n "$session" ]; then
@@ -88,8 +91,16 @@ while :; do
   stop_watcher
   rm -f "$run_file"
 
+  # A resume that fails at once (the conversation can't be found) gets one fresh start instead.
+  if [ -n "$session" ] && [ "$code" -ne 0 ] && [ ! -f "$switch_file" ] && [ $(($(date +%s) - started)) -lt 10 ]; then
+    printf 'tagteam: could not resume the conversation, starting a new one on %s\n' "${label:-$dir}" >&2
+    session=
+    handover=
+    continue
+  fi
+  [ -f "$switch_file" ] || exit "$code"
+  # Empty when the session had no conversation yet: start fresh on the target.
   session=$(value session)
-  [ -n "$session" ] || { rm -f "$switch_file"; exit "$code"; }
   dir=$(value target_dir)
   if [ -z "$dir" ]; then
     printf 'tagteam: the switch request names no account folder, so claude was not restarted\n' >&2
@@ -110,5 +121,6 @@ while :; do
       trap : INT
     fi ;;
   esac
-  printf 'tagteam: resuming on %s\n' "${label:-$dir}" >&2
+  if [ -n "$session" ]; then verb=resuming; else verb='starting fresh'; fi
+  printf 'tagteam: %s on %s\n' "$verb" "${label:-$dir}" >&2
 done
