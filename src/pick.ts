@@ -14,20 +14,20 @@ export function pickTarget(
   now: number,
 ): Pick {
   const rows = accounts
-    .filter((a) => !a.excluded && !a.needsSignIn && a.label !== currentLabel)
+    .filter((a) => !a.excluded && !a.needsSignIn)
     .map((a) => {
       const ws = Object.values(usage[a.accountUuid]?.windows ?? {})
       return { a, ws, level: level(ws, now), read: lastRead(ws) }
     })
 
   const open = rows
-    .filter((r) => r.level < threshold)
+    .filter((r) => r.a.label !== currentLabel && r.level < threshold)
     .sort(
       (x, y) =>
         x.level - y.level ||
         Number(!x.ws.length) - Number(!y.ws.length) ||
         x.a.order - y.a.order ||
-        x.read - y.read,
+        (x.read < y.read ? -1 : x.read > y.read ? 1 : 0),
     )
   if (open[0]) return { kind: 'switch', label: open[0].a.label }
 

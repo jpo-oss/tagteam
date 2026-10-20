@@ -88,3 +88,38 @@ test('none when nothing is eligible and no reset times', () => {
   expect(pickTarget([acct('a'), acct('b')], u, 'a', 95, now)).toEqual({ kind: 'none' })
   expect(pickTarget([acct('a')], {}, 'a', 95, now)).toEqual({ kind: 'none' })
 })
+
+test('wait includes the current account', () => {
+  const u = byUuid(
+    use('a', ['five_hour', 99, now + H]),
+    use('b', ['seven_day', 100, now + 48 * H]),
+    use('c', ['seven_day', 100, now + 72 * H]),
+  )
+  expect(pickTarget([acct('a'), acct('b'), acct('c')], u, 'a', 95, now))
+    .toEqual({ kind: 'wait', label: 'a', resumeAt: now + H })
+})
+
+test('wait skips excluded and needsSignIn accounts', () => {
+  const u = byUuid(
+    use('b', ['five_hour', 99, now + H]),
+    use('c', ['five_hour', 99, now + 2 * H]),
+    use('d', ['five_hour', 99, now + 3 * H]),
+  )
+  expect(pickTarget([acct('a'), acct('b', { excluded: true }), acct('c', { needsSignIn: true }), acct('d')], u, 'a', 95, now))
+    .toEqual({ kind: 'wait', label: 'd', resumeAt: now + 3 * H })
+})
+
+test('wait ignores an account with no reset time', () => {
+  const u = byUuid(use('b', ['five_hour', 99]), use('c', ['five_hour', 99, now + 4 * H]))
+  expect(pickTarget([acct('a'), acct('b'), acct('c')], u, 'a', 95, now))
+    .toEqual({ kind: 'wait', label: 'c', resumeAt: now + 4 * H })
+})
+
+test('wait skips an account with a blocking window lacking a reset', () => {
+  const u = byUuid(
+    use('b', ['five_hour', 99, now + H], ['seven_day', 100]),
+    use('c', ['five_hour', 99, now + 4 * H]),
+  )
+  expect(pickTarget([acct('a'), acct('b'), acct('c')], u, 'a', 95, now))
+    .toEqual({ kind: 'wait', label: 'c', resumeAt: now + 4 * H })
+})
