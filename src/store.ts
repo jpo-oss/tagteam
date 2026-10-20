@@ -79,7 +79,6 @@ export const writeSwitchRequest = async (io: Io, r: SwitchRequest): Promise<void
     ['resume_at', r.resumeAt === undefined ? '' : String(r.resumeAt)],
     ['reason', r.reason],
     ['handover', r.handover],
-    ['stall', String(r.stallSeconds)],
   ]
   const text = lines.map(([k, v]) => `${k}=${oneLine(v)}\n`).join('')
   await writeAtomic(io, `${await stateDir(io)}/switch-${r.run}`, text)

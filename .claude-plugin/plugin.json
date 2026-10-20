@@ -21,12 +21,6 @@
       "default": 95,
       "min": 50,
       "max": 100
-    },
-    "stallTimeoutSeconds": {
-      "type": "number",
-      "title": "Stall timeout (seconds)",
-      "description": "How long to wait for Claude to close on its own after a switch before the launcher closes it.",
-      "default": 30
     }
   }
 }

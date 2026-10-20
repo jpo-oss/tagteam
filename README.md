@@ -86,7 +86,8 @@ Settings live in `/plugin configure tagteam`:
 |---|---|---|
 | `autoSwitch` | `false` | Switch without asking. When off, one session asks and the rest wait for that answer. No means it won't ask again until that limit window resets. |
 | `threshold` | `95` | Usage percentage (50 to 100) that triggers a switch |
-| `stallTimeoutSeconds` | `30` | How long the launcher waits for Claude to close itself before stopping it |
+
+Advanced: set `TAGTEAM_STALL` (seconds, default 30) to change how long the launcher waits for Claude to close itself before closing it.
 
 Accounts and state live in `~/.claude-accounts`, or `$TAGTEAM_HOME` if you set it. tagteam writes nothing inside `~/.claude`.
 
