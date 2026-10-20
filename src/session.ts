@@ -30,6 +30,12 @@ export const localDay = (ms: number): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
+export const when = (ms: number, now: number): string => {
+  const d = new Date(ms)
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return localDay(ms) === localDay(now) ? hm : `${localDay(ms)} ${hm}`
+}
+
 const showStatus = async (io: Io, ui: Ui, uuid: string, windows: Record<string, Reading>, now: number) => {
   const top = Object.values(windows)
     .map((w) => ({ kind: w.kind, pct: effectivePercent({ ...w, readAt: now }, now) }))
