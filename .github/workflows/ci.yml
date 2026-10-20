@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Claude Code
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: claude --version
+      - run: claude plugin validate . --strict
+      - name: Plugin tests
+        run: CLAUDE_CONFIG_DIR="$(mktemp -d)" claude plugin test .
+      - run: shellcheck -s sh bin/tagteam test/launcher.test.sh test/fake-claude
+      - run: sh test/launcher.test.sh
+      - run: TEST_SH=dash sh test/launcher.test.sh
