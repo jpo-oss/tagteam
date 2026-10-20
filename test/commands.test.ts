@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
-import { assertUnderRoot, parseArgs, runCommand, type Deps } from '../src/commands'
+import { assertUnderRoot, parseArgs, refreshLauncher, runCommand, type Deps } from '../src/commands'
 import { linkShared, validLabel } from '../src/folders'
 import { listAccounts, readActive, saveAccount, writeActive } from '../src/store'
 import type { Account } from '../src/types'
@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@b.c' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', ...over,
 })
 
 test('parseArgs', () => {
@@ -237,4 +237,59 @@ test('a failed mv during rename leaves the old record only', async () => {
   const failMv = { ...io, run: async (argv: string[], o?: never) => (argv[0] === 'mv' && argv[1] === '/t/a' ? { exitCode: 1, stdout: '', stderr: 'busy' } : io.run(argv, o)) }
   await expect(runCommand(failMv, 'edit a name=b', deps())).rejects.toThrow('busy')
   expect((await listAccounts(io)).map((a) => a.label)).toEqual(['a'])
+})
+
+const withPath = async (path: string) => {
+  const io = memoryIo({ HOME: '/h', TAGTEAM_HOME: '/t', PATH: path })
+  await io.write('/p/bin/tagteam', '#!/bin/sh\nv1\n')
+  return spy(io as never)
+}
+
+test('install copies the launcher to ~/.local/bin as 755 and warns when it is not on PATH', async () => {
+  const { io, calls } = await withPath('/usr/bin')
+  const text = await runCommand(io, 'install', deps())
+  expect(await io.read('/h/.local/bin/tagteam')).toBe('#!/bin/sh\nv1\n')
+  expect(calls).toContain('chmod')
+  expect(text).toContain('/h/.local/bin')
+  expect(text).toContain('PATH')
+  expect((await io.list('/h/.local/bin')).filter((n) => n.includes('.tmp-'))).toEqual([])
+})
+
+test('install on PATH does not warn, and a second install says it is current', async () => {
+  const { io } = await withPath('/usr/bin:/h/.local/bin/')
+  expect(await runCommand(io, 'install', deps())).not.toContain('PATH')
+  expect(await runCommand(io, 'install', deps())).toContain('up to date')
+})
+
+test('install needs the terminal', async () => {
+  const { io } = await withPath('/usr/bin')
+  expect(await runCommand({ ...io, run: async () => { throw new Error('CLI only') } }, 'install', deps())).toBe('Run this from the terminal.')
+})
+
+test('refreshLauncher only updates an installed launcher that differs', async () => {
+  const { io } = await withPath('/usr/bin')
+  await refreshLauncher(io, '/p')
+  expect(await io.exists('/h/.local/bin/tagteam')).toBe(false)
+  await io.write('/h/.local/bin/tagteam', 'old')
+  await refreshLauncher(io, '/p')
+  expect(await io.read('/h/.local/bin/tagteam')).toBe('#!/bin/sh\nv1\n')
+})
+
+test('session.start refreshes an installed launcher from the plugin folder', async ($, on) => {
+  const base = await setup()
+  const sources: string[] = []
+  const isSource = (p: string) => p.endsWith('/bin/tagteam') && !p.startsWith('/h/')
+  const io = {
+    ...base,
+    exists: async (p: string) => isSource(p) || base.exists(p),
+    read: async (p: string) => (isSource(p) ? (sources.push(p), 'new') : base.read(p)),
+  }
+  routeTo(on, io)
+  await io.write('/h/.local/bin/tagteam', 'old')
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(sources.length).toBeGreaterThan(0)
+  expect(sources.every((p) => p.length > '/bin/tagteam'.length)).toBe(true)
+  expect(await io.read('/h/.local/bin/tagteam')).toBe('new')
 })

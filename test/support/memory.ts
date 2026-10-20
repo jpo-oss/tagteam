@@ -48,7 +48,7 @@ export const memoryIo = (env: Record<string, string> = {}, livePids: readonly st
       }
       return ok()
     }
-    if (cmd === 'true') return ok()
+    if (cmd === 'true' || cmd === 'chmod') return ok()
     if (cmd === 'kill') return livePids.includes(args[0] ?? '') ? ok() : fail('kill: No such process')
     if (cmd === 'ln') {
       const [target, dest] = args as [string, string]

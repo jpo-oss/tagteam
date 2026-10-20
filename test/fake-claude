@@ -1,0 +1,20 @@
+#!/bin/sh
+# Stand-in for claude in launcher tests. Run n follows $FAKE_DIR/mode-<n>:
+# "exit <code>", "switch" (write $FAKE_DIR/switch as the switch file, exit 0)
+# or "hang" (write it, then wait for a signal). No mode file means exit 0.
+n=$(($(wc -l < "$FAKE_DIR/log" 2>/dev/null || echo 0) + 1))
+run_file=$(tr '\n' ' ' < "$TAGTEAM_HOME/state/run-$TAGTEAM_RUN" 2>/dev/null)
+printf 'run=%s cfg=%s t=%s runfile=%s args=%s\n' "$n" "${CLAUDE_CONFIG_DIR-UNSET}" "$(date +%s)" "$run_file" "$*" >> "$FAKE_DIR/log"
+mode=$(cat "$FAKE_DIR/mode-$n" 2>/dev/null || echo 'exit 0')
+switch_file="$TAGTEAM_HOME/state/switch-$TAGTEAM_RUN"
+case $mode in
+  exit*) exit "${mode#exit }" ;;
+  switch) cp "$FAKE_DIR/switch" "$switch_file"; exit 0 ;;
+  hang)
+    trap 'echo term >> "$FAKE_DIR/signals"; kill "$nap"; exit 143' TERM
+    cp "$FAKE_DIR/switch" "$switch_file"
+    sleep 20 &
+    nap=$!
+    wait "$nap"
+    exit 0 ;;
+esac
