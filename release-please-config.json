@@ -12,5 +12,7 @@
         }
       ]
     }
-  }
+  },
+  "pull-request-header": "Release notes for this version. Merging publishes it.",
+  "pull-request-footer": "Merge when CI passes."
 }
