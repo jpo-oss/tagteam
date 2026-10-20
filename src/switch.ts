@@ -2,7 +2,7 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import { withTrust } from './appstate'
 import type { Io } from './io'
 import { pickTarget } from './pick'
-import { configFile, currentAccountUuid, localDay } from './session'
+import { configFile, currentAccountUuid, when } from './session'
 import {
   awaitDecision, claimDecision, dropDecision, listAccounts, loadUsage, pruneDecisions, readActive, readJson,
   releaseDecision, snooze, snoozed, stateRoot, writeActive, writeJsonAtomic, writeSwitchRequest,
@@ -72,12 +72,6 @@ export const scheduleExit = (ctx: SwitchCtx): void => {
     state.exitScheduled = false
     return false
   })
-}
-
-const when = (ms: number, now: number): string => {
-  const d = new Date(ms)
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  return localDay(ms) === localDay(now) ? hm : `${localDay(ms)} ${hm}`
 }
 
 const once = (state: SwitchState, key: string): boolean => !state.told.has(key) && !!state.told.add(key)

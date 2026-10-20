@@ -343,6 +343,7 @@ test('/tagteam switch <label> goes through deps', async () => {
   const deps: Deps = {
     login: async () => undefined, logout: async () => true, confirm: async () => true,
     switchTo: async (l) => (seen.push(l), `Switching to ${l}.`), pluginRoot: '/p',
+    openPane: async () => '',
   }
   expect(await runCommand(io, 'switch b', deps)).toBe('Switching to b.')
   expect(seen).toEqual(['b'])

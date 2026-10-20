@@ -1,6 +1,7 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
 import { realDeps, refreshLauncher, runCommand } from '../src/commands'
+import { drawPane, paneRows } from '../src/pane'
 import { recordMeasure, recordTurn } from '../src/session'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
 
@@ -29,11 +30,18 @@ export const register: Register = (on, options) => {
     const confirm = (q: string) => $.ui.ask(q, ['Remove', 'Cancel']).then((a) => a === 'Remove', () => false)
     const io = ioFrom($)
     const switchTo = (label: string) => manualSwitch({ io, ui: uiFrom($), state, settings }, label)
+    const openPane = async () =>
+      (await $.ui.open({ id: 'tagteam', title: 'Accounts' })).isPlaced ? 'Accounts pane opened.' : 'No room for the pane here.'
     try {
-      return { text: await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root)) }
+      return { text: await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root, openPane)) }
     } catch (err) {
       return { text: `tagteam: ${message(err)}` }
     }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: 'tagteam' }, async ($, e) => {
+    const io = ioFrom($)
+    return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns)
   })
 
   on('session.measure', async ($, e, next) => {

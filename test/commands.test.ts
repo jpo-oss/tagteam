@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@b.c' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', ...over,
 })
 
 test('parseArgs', () => {
@@ -131,7 +131,8 @@ test('edit rejects bad values and clashing names', async () => {
 
 test('router: stubs, usage and bad labels', async () => {
   const io = await setup()
-  expect(await runCommand(io, 'status', deps())).toContain('Not available')
+  expect(await runCommand(io, 'status', deps())).toBe('pane')
+  expect(await runCommand(io, '', deps())).toBe('pane')
   expect(await runCommand(io, 'bogus', deps())).toContain('Usage')
   expect(await runCommand(io, 'add', deps())).toContain('Usage')
   expect(await runCommand(io, 'add ../x', deps())).toContain('lowercase')
@@ -146,12 +147,13 @@ test('/tagteam is registered and routed through the hook', async ($, on) => {
   const io = await setup()
   routeTo(on, io)
   let name = ''
+  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('command.register', (_, e) => ((name = e.name), { value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect(name).toBe('tagteam')
   const r = await $.command.run({ command: 'tagteam', args: 'status' } as never)
-  expect(r.text).toContain('Not available')
+  expect(r.text).toContain('pane opened')
 })
 
 const spy = (io: Awaited<ReturnType<typeof setup>>) => {

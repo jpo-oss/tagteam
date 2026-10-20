@@ -9,13 +9,13 @@ export type Deps = {
   confirm(question: string): Promise<boolean>
   switchTo(label: string): Promise<string>
   pluginRoot: string
+  openPane(): Promise<string>
 }
 
-export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string): Deps =>
-  ({ login, logout, confirm, switchTo, pluginRoot })
+export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string, openPane: Deps['openPane']): Deps =>
+  ({ login, logout, confirm, switchTo, pluginRoot, openPane })
 
 export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | install'
-const NOT_YET = 'Not available yet.'
 const TERMINAL = 'Run this from the terminal.'
 
 export function parseArgs(args: string): { sub: string; label?: string; opts: Record<string, string> } {
@@ -186,7 +186,7 @@ export async function refreshLauncher(io: Io, pluginRoot: string): Promise<void>
 
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
   const { sub, label, opts } = parseArgs(args)
-  if (sub === 'status') return NOT_YET
+  if (sub === '' || sub === 'status') return deps.openPane()
   if (sub !== 'add' && sub !== 'edit' && sub !== 'remove' && sub !== 'switch' && sub !== 'install') return USAGE
   if (sub !== 'install') {
     if (!label) return USAGE
