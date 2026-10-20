@@ -3,7 +3,7 @@ import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
 import { assertUnderRoot, parseArgs, refreshLauncher, runCommand, type Deps } from '../src/commands'
 import { linkShared, validLabel } from '../src/folders'
-import { listAccounts, readActive, saveAccount, writeActive } from '../src/store'
+import { listAccounts, readActive, saveAccount, saveUsage, writeActive } from '../src/store'
 import type { Account } from '../src/types'
 
 const setup = async () => {
@@ -154,6 +154,21 @@ test('/tagteam is registered and routed through the hook', async ($, on) => {
   expect(name).toBe('tagteam')
   const r = await $.command.run({ command: 'tagteam', args: 'status' } as never)
   expect(r.text).toContain('pane opened')
+})
+
+test('an edit redraws the status line from the last reading', async ($, on) => {
+  const io = await setup()
+  await saveAccount(io, acct('main', 'home'))
+  await saveUsage(io, {
+    accountUuid: 'home', tokensByDay: {}, earlyResets: [],
+    windows: { five_hour: { kind: 'five_hour', percentUsed: 42, resetsAt: new Date(Date.now() + 3600_000).toISOString(), readAt: 1 } },
+  })
+  routeTo(on, io)
+  const status: string[] = []
+  on('ui.status', (_, e) => (status.push(String(e.text)), { value: undefined }))
+  const r = await $.command.run({ command: 'tagteam', args: 'edit main order=2' } as never)
+  expect(r.text).toBe('Updated main.')
+  expect(status).toEqual(['main, 5h 42%'])
 })
 
 const spy = (io: Awaited<ReturnType<typeof setup>>) => {

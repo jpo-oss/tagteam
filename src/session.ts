@@ -36,13 +36,19 @@ export const when = (ms: number, now: number): string => {
   return localDay(ms) === localDay(now) ? hm : `${localDay(ms)} ${hm}`
 }
 
-const showStatus = async (io: Io, ui: Ui, uuid: string, windows: Record<string, Reading>, now: number) => {
+const showStatus = async (io: Io, ui: Pick<Ui, 'status'>, uuid: string, windows: Record<string, Reading>, now: number) => {
   const top = Object.values(windows)
     .map((w) => ({ kind: w.kind, pct: effectivePercent({ ...w, readAt: now }, now) }))
     .sort((a, b) => b.pct - a.pct)[0]
   if (!top) return
   const label = labelFor(await listAccounts(io), uuid) ?? 'unmanaged'
   ui.status(`${label}, ${windowName(top.kind)} ${Math.round(top.pct)}%`)
+}
+
+// Redraws the status line from the last saved reading, e.g. after an account is added or renamed.
+export const refreshStatus = async (io: Io, ui: Pick<Ui, 'status'>): Promise<void> => {
+  const uuid = await currentAccountUuid(io)
+  if (uuid) await showStatus(io, ui, uuid, (await loadUsage(io, uuid)).windows, await io.now())
 }
 
 export const recordMeasure = async (io: Io, ui: Ui, readings: readonly Reading[]): Promise<void> => {
