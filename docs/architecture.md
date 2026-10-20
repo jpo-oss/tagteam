@@ -8,6 +8,8 @@ Each account is a Claude Code config folder at `~/.claude-accounts/<label>/`, si
 
 Every top-level entry in `~/.claude` is symlinked into each folder, so settings, plugins, history and `/resume` are shared. `.credentials.json`, `.claude.json`, `backups/` and lock files are not. A new folder's `.claude.json` is seeded from `~/.claude.json` without login or account keys, which skips Claude's first-run screens. Before a switch, the plugin copies the working folder's trust entry into the target so the reopened session doesn't stop on the trust prompt.
 
+Renaming an account changes its label only. The folder keeps its first name, because on macOS the login in the keychain is tied to the folder's path.
+
 Accounts are identified by `oauthAccount.accountUuid`, so readings from a plain `claude` session still land on the right account.
 
 ## Plugin

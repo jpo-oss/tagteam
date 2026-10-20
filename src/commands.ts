@@ -112,17 +112,11 @@ async function edit(io: Io, label: string, opts: Record<string, string>): Promis
     if (problem) return problem
     const root = await stateRoot(io)
     if ((await listAccounts(io)).some((x) => x.label === name) || (await io.exists(`${root}/${name}`))) return `${name} already exists.`
-    await assertUnderRoot(io, a.dir)
+    // The folder stays put: on macOS the keychain login is keyed to its path, so moving it signs the account out.
     next.label = name
-    next.dir = `${root}/${name}`
   }
   await saveAccount(io, next)
   if (!rename) return `Updated ${label}.`
-  const r = await io.run(['mv', a.dir, next.dir])
-  if (r.exitCode !== 0) {
-    await removeAccountRecord(io, next.label)
-    throw new Error(`Could not rename: ${r.stderr.trim()}`)
-  }
   await removeAccountRecord(io, label)
   if ((await readActive(io)) === label) await writeActive(io, next)
   return `Updated ${next.label}.`

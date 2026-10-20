@@ -106,16 +106,21 @@ test('remove never deletes a folder outside the state root', async () => {
   expect(await io.exists('/h/important/f')).toBe(true)
 })
 
-test('edit renames folder and record, moves the active pointer, sets order and exclude', async () => {
-  const io = await setup()
-  await runCommand(io, 'add work', deps())
+test('edit renames the label and record without moving the folder, moves the active pointer, sets order and exclude', async () => {
+  const base = await setup()
+  await runCommand(base, 'add work', deps())
+  const moves: string[][] = []
+  const io = { ...base, run: async (argv: string[], o?: never) => (argv[0] === 'mv' && moves.push(argv), base.run(argv, o)) }
   const text = await runCommand(io, 'edit work name=job order=3 exclude=true', deps())
   expect(text).toContain('job')
   const [a] = await listAccounts(io)
-  expect(a).toMatchObject({ label: 'job', dir: '/t/job', order: 3, excluded: true })
-  expect(await io.exists('/t/work')).toBe(false)
-  expect(await io.exists('/t/job/.claude.json')).toBe(true)
+  expect(a).toMatchObject({ label: 'job', dir: '/t/work', order: 3, excluded: true })
+  expect(moves.filter((m) => !m[1]?.includes('.tmp-'))).toEqual([])
+  expect(await io.exists('/t/work/.claude.json')).toBe(true)
+  expect(await io.exists('/t/job')).toBe(false)
+  expect(await io.exists('/t/state/accounts/work.json')).toBe(false)
   expect(await readActive(io)).toBe('job')
+  expect((await io.read('/t/state/active-dir'))?.trim()).toBe('/t/work')
 })
 
 test('edit rejects bad values and clashing names', async () => {
@@ -196,7 +201,7 @@ test('assertUnderRoot rejects ../, root, state and outside paths; accepts a trai
   await expect(assertUnderRoot(io, '/t/a')).resolves.toBeUndefined()
 })
 
-test('edit rename and remove refuse a dir outside the root without mv, rm or logout', async () => {
+test('remove refuses a dir outside the root without rm or logout, and rename leaves it alone', async () => {
   const base = await setup()
   await saveAccount(base, { ...acct('x', 'u9'), dir: '/h/important' })
   await saveAccount(base, acct('main', 'u1', 1))
@@ -204,8 +209,10 @@ test('edit rename and remove refuse a dir outside the root without mv, rm or log
   const { io, calls } = spy(base)
   let loggedOut = false
   const d = deps({ logout: async () => ((loggedOut = true), true) })
-  await expect(runCommand(io, 'edit x name=y', d)).rejects.toThrow()
-  await expect(runCommand(io, 'remove x', d)).rejects.toThrow()
+  expect(await runCommand(io, 'edit x name=y', d)).toBe('Updated y.')
+  expect((await listAccounts(io)).find((a) => a.label === 'y')?.dir).toBe('/h/important')
+  calls.length = 0
+  await expect(runCommand(io, 'remove y', d)).rejects.toThrow()
   expect(calls.filter((c) => c === 'mv' || c === 'rm')).toEqual([])
   expect(loggedOut).toBe(false)
 })
@@ -245,15 +252,6 @@ test('edit with an unknown key changes nothing', async () => {
   const text = await runCommand(io, 'edit a nmae=b order=5', deps())
   expect(text).toContain('name, order, exclude')
   expect((await listAccounts(io))[0]?.order).toBe(0)
-})
-
-test('a failed mv during rename leaves the old record only', async () => {
-  const io = await setup()
-  await saveAccount(io, acct('a', 'u1'))
-  await io.write('/t/a/f', '1')
-  const failMv = { ...io, run: async (argv: string[], o?: never) => (argv[0] === 'mv' && argv[1] === '/t/a' ? { exitCode: 1, stdout: '', stderr: 'busy' } : io.run(argv, o)) }
-  await expect(runCommand(failMv, 'edit a name=b', deps())).rejects.toThrow('busy')
-  expect((await listAccounts(io)).map((a) => a.label)).toEqual(['a'])
 })
 
 const withPath = async (path: string) => {
