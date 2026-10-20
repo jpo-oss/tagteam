@@ -219,8 +219,8 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
     from: current.label, target, resumeAt, key: episode,
     reason: `${current.label} reached ${pct}% of its ${name} limit`,
     toast: resumeAt === undefined
-      ? `Switched from ${current.label} (${pct}% ${name}) to ${to}`
-      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} ${whenAt(resumeAt, now)}`,
+      ? `Switched from ${current.label} (${pct}% of its ${name} limit) to ${to}`
+      : `${current.label} (${pct}% of its ${name} limit) is closing and resumes on ${target.label} ${whenAt(resumeAt, now)}`,
   })
 }
 

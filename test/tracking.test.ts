@@ -35,29 +35,73 @@ test('labelFor finds the account by uuid', () => {
   expect(labelFor([a], 'zz')).toBeUndefined()
 })
 
-test('session.measure stores the reading and shows status', async ($, on) => {
+const statusOf = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+  const status: (string | undefined)[] = []
+  on('ui.status', (_, e) => (status.push(e.text as string | undefined), { value: undefined }))
+  return status
+}
+
+test('session.measure stores the reading and hides the status under 70%', async ($, on) => {
   const io = await setup()
   routeTo(on, io)
-  const status: string[] = []
-  on('ui.status', (_, e) => (status.push(String(e.text)), { value: undefined }))
+  const status = statusOf(on)
   const resetsAt = new Date(Date.now() + 3600_000).toISOString()
   await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 42, resetsAt }]))
   const u = await usageOf(io)
   expect(u?.windows.five_hour?.percentUsed).toBe(42)
   expect(u?.windows.five_hour?.resetsAt).toBe(resetsAt)
-  expect(status).toEqual(['unmanaged, 5h 42%'])
+  expect(status).toEqual([undefined])
 })
 
-test('status uses the account label when managed', async ($, on) => {
-  const io = await setup()
-  await io.write('/t/state/accounts/work.json', JSON.stringify({
+const workAccount = (io: Awaited<ReturnType<typeof setup>>) =>
+  io.write('/t/state/accounts/work.json', JSON.stringify({
     label: 'work', dir: '/d', accountUuid: 'u1', email: 'a@example.com', order: 1, excluded: false, needsSignIn: false,
   }))
+
+test('status shows the plain text at 82% weekly, with the account label', async ($, on) => {
+  const io = await setup()
+  await workAccount(io)
   routeTo(on, io)
-  const status: string[] = []
-  on('ui.status', (_, e) => (status.push(String(e.text)), { value: undefined }))
-  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 61 }]))
-  expect(status).toEqual(['work, 7d 61%'])
+  const status = statusOf(on)
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 10 }, { kind: 'seven_day', percentUsed: 82 }]))
+  expect(status).toEqual(['work at 82% of its weekly limit'])
+})
+
+test('status for an unmanaged account says this account', async ($, on) => {
+  const io = await setup()
+  routeTo(on, io)
+  const status = statusOf(on)
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 75 }]))
+  expect(status).toEqual(['this account at 75% of its 5-hour limit'])
+})
+
+test('status at the threshold says it will ask to switch', async ($, on) => {
+  const io = await setup()
+  await workAccount(io)
+  routeTo(on, io)
+  const status = statusOf(on)
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 96 }]))
+  expect(status).toEqual(['work at 96% of its 5-hour limit, will ask to switch'])
+})
+
+test('status at the threshold says switching soon when auto switch is on', { options: { autoSwitch: true } }, async ($, on) => {
+  const io = await setup()
+  await workAccount(io)
+  routeTo(on, io)
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  const status = statusOf(on)
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 96 }]))
+  expect(status[0]).toBe('work at 96% of its 5-hour limit, switching soon')
+})
+
+test('status clears when a reset drops the window under 70%', async ($, on) => {
+  const io = await setup()
+  routeTo(on, io)
+  const status = statusOf(on)
+  const resetsAt = new Date(Date.now() + 3600_000).toISOString()
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 80, resetsAt }]))
+  await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 3, resetsAt }]))
+  expect(status).toEqual(['this account at 80% of its 5-hour limit', undefined])
 })
 
 test('an early reset raises one toast naming the window', async ($, on) => {
@@ -71,7 +115,7 @@ test('an early reset raises one toast naming the window', async ($, on) => {
   expect(toasts).toEqual([])
   await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 3, resetsAt }]))
   expect(toasts.length).toBe(1)
-  expect(toasts[0]).toContain('5h')
+  expect(toasts[0]).toBe('Your 5-hour limit reset early')
   expect((await usageOf(io))?.earlyResets.length).toBe(1)
 })
 

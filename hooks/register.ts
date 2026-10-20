@@ -79,7 +79,7 @@ export const register: Register = (on, options) => {
       text = `tagteam: ${message(err)}`
     }
     if (['add', 'edit', 'remove', 'delete', 'refresh'].includes(parseArgs(e.args).sub)) {
-      await refreshStatus(io, { status: (t) => $.ui.status(t) }).catch(() => undefined)
+      await refreshStatus(io, { status: (t) => $.ui.status(t) }, settings).catch(() => undefined)
       redraw($)
     }
     return { text }
@@ -115,7 +115,7 @@ export const register: Register = (on, options) => {
     evaluating = true
     const io = ioFrom($)
     try {
-      await recordMeasure(io, { toast: (t) => $.ui.toast(t), status: (t) => $.ui.status(t) }, e.rateLimits)
+      await recordMeasure(io, { toast: (t) => $.ui.toast(t), status: (t) => $.ui.status(t) }, settings, e.rateLimits)
       redraw($)
     } catch (err) {
       $.ui.log(`tagteam: usage tracking failed: ${message(err)}`, { to: 'debug' })
