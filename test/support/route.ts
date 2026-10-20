@@ -3,7 +3,7 @@ import type { EnvName, Io } from '../../src/io'
 
 // Answers the plugin's own fs/process/env/clock calls from an Io, since the
 // test runtime has no disk or process beneath the plugin.
-export const routeTo = (on: On, io: Io): void => {
+export const routeTo = (on: On, io: Io, silentLog = true): void => {
   on('fs.read', async (_, e) => ({ value: (await io.read(e.path)) ?? '' }))
   on('fs.write', async (_, e) => (await io.write(e.path, e.text), { value: undefined }))
   on('fs.exists', async (_, e) => ({ value: await io.exists(e.path) }))
@@ -18,7 +18,7 @@ export const routeTo = (on: On, io: Io): void => {
   }))
   on('env.get', async (_, e) => ({ value: await io.env(e.name as EnvName) }))
   on('clock.now', async () => ({ value: await io.now() }))
-  on('ui.log', () => ({ value: undefined }))
+  if (silentLog) on('ui.log', () => ({ value: undefined }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))

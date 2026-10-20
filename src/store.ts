@@ -159,3 +159,11 @@ export const pruneDecisions = async (io: Io, now: number): Promise<void> => {
 export const dropDecision = async (io: Io, uuid: string, kind: string, resetsAt?: string): Promise<void> => {
   await retire(io, await decisionDir(io, uuid, kind, resetsAt))
 }
+
+export type UpdateCheck = { checkedAt: number; announced?: string }
+
+export const readUpdateCheck = async (io: Io): Promise<UpdateCheck> =>
+  readJson<UpdateCheck>(io, `${await stateDir(io)}/update-check.json`, { checkedAt: 0 })
+
+export const saveUpdateCheck = async (io: Io, c: UpdateCheck): Promise<void> =>
+  writeJsonAtomic(io, `${await stateDir(io)}/update-check.json`, c)

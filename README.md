@@ -28,7 +28,7 @@ Use of Claude is subject to Anthropic's [Usage Policy](https://www.anthropic.com
 
 On a machine you reach over SSH, where a browser can't open, add accounts with `tagteam add <label>` in a terminal instead (see below).
 
-Claude Code doesn't auto-update plugins from third-party marketplaces like this one by default. To update, run `claude plugin update tagteam@tagteam`, or turn on auto-update in `/plugin` under **Marketplaces**, **tagteam**, **Enable auto-update**. The launcher picks up the new version at your next session start.
+Claude Code doesn't auto-update plugins from third-party marketplaces like this one by default. To update, run `claude plugin update tagteam@tagteam`, or turn on auto-update in `/plugin` under **Marketplaces**, **tagteam**, **Enable auto-update**. The launcher picks up the new version at your next session start. tagteam also shows a notice when a new version is out.
 
 ## Usage
 
