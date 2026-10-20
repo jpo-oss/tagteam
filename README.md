@@ -26,6 +26,8 @@ Works with Claude Code. Not made by or affiliated with Anthropic. Use of Claude 
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
+Claude Code doesn't auto-update plugins from third-party marketplaces like this one by default. To update, run `claude plugin update tagteam@tagteam`, or turn on auto-update in `/plugin` under **Marketplaces**, **tagteam**, **Enable auto-update**. The launcher picks up the new version at your next session start.
+
 ## Usage
 
 1. Add each account with a short label. Add the login you already use too, since every account gets its own folder:
@@ -53,7 +55,7 @@ Works with Claude Code. Not made by or affiliated with Anthropic. Use of Claude 
 
 4. When the account you're on reaches the threshold, tagteam asks whether to switch. Say yes and the session closes and reopens on the account with the most room. With auto switch on, it switches without asking and tells you.
 
-   ![The question asking to switch to another account at 95% usage, and the notice shown after the switch](docs/images/switch.png)
+   ![The question asking whether to switch from work, at 100% of its 7-day limit, to personal at 43%](docs/images/switch.png)
 
 Other commands:
 
@@ -63,6 +65,8 @@ Other commands:
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
 | `/tagteam remove <label>` | Signs the account out and deletes its folder. You can't remove the active account. |
+
+If an account's login lapses, sign it in again with `/tagteam remove <label>` and then `/tagteam add <label>`. Switch away from it first if it's the active one.
 
 Settings live in `/plugin configure tagteam`:
 
