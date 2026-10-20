@@ -74,6 +74,31 @@ if [ "$(sed -n 3p "$case_dir/fake/args-2")" = "$handover" ] && [ ! -e pwned ] &&
 it 'relaunch rewrites the run file'
 if line 2 | grep -q "runfile=dir=$case_dir/B pid="; then pass; else fail; fi
 
+setup no-conversation
+echo switch > "$case_dir/fake/mode-1"
+printf 'session=\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=30\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch; code=$?
+it 'a switch with no conversation starts claude fresh on the target with the original args'
+if [ "$code" = 0 ] && runs 2 && [ "$(field 2 cfg)" = "$case_dir/B" ] && args_are 2 --model opus && no_leftovers; then pass; else fail; fi
+
+setup resume-fails
+echo switch > "$case_dir/fake/mode-1"
+echo 'exit 1' > "$case_dir/fake/mode-2"
+printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=30\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch; code=$?
+it 'a resume that fails at once is followed by one fresh start on the target'
+if [ "$code" = 0 ] && runs 3 && args_are 2 --resume s1 go --model opus && args_are 3 --model opus &&
+  [ "$(field 3 cfg)" = "$case_dir/B" ] && grep -q 'could not resume' "$case_dir/out" && no_leftovers; then pass; else fail; fi
+
+setup fresh-fails
+echo switch > "$case_dir/fake/mode-1"
+echo 'exit 1' > "$case_dir/fake/mode-2"
+echo 'exit 4' > "$case_dir/fake/mode-3"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch; code=$?
+it 'the fresh start is tried once, and its exit code is returned'
+if [ "$code" = 4 ] && runs 3; then pass; else fail; fi
+
 setup stall
 echo "$case_dir/A" > "$case_dir/home/state/active-dir"
 echo hang > "$case_dir/fake/mode-1"

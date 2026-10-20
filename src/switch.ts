@@ -16,6 +16,7 @@ export type SwitchUi = {
   notify(text: string): Promise<unknown>
   cwd(): Promise<string>
   sessionId(): Promise<string>
+  turns(): Promise<number>
   exitSoon(ready: () => boolean): void
 }
 // A decision held in memory until no turn is running, so the launcher's stall timer never cuts a turn short.
@@ -37,6 +38,7 @@ export function uiFrom($: Dollar): SwitchUi {
     notify: (t) => $.ui.notify(t),
     cwd: () => $.session.cwd(),
     sessionId: () => $.session.id(),
+    turns: () => $.session.turns(),
     // Never call command.run directly: inside a command.run hook the engine refuses it.
     exitSoon: (ready) => void $.clock.after(500, () => {
       if (ready()) void $.command.run({ command: 'exit' }).catch(() => undefined)
@@ -119,7 +121,8 @@ export async function commit(ctx: SwitchCtx): Promise<void> {
     const run = await io.env('TAGTEAM_RUN')
     if (!run) throw new Error('this session was not started by the tagteam launcher')
     await copyTrust(io, await ui.cwd(), p.target.dir)
-    const session = await ui.sessionId()
+    // No turns means no transcript yet, so there is nothing to resume.
+    const session = (await ui.turns()) > 0 ? await ui.sessionId() : ''
     await writeActive(io, p.target)
     await writeSwitchRequest(io, {
       run, session, targetLabel: p.target.label, targetDir: p.target.dir,
