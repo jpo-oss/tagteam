@@ -44,6 +44,10 @@ export async function login(io: Io, dir: string): Promise<void> {
   if (r.exitCode !== 0) throw new Error(`claude auth login failed (${r.exitCode}): ${r.stderr.trim()}`)
 }
 
-export async function logout(io: Io, dir: string): Promise<void> {
-  await io.run(['claude', 'auth', 'logout'], { env: { CLAUDE_CONFIG_DIR: dir }, timeoutMs: 60000 })
+export async function logout(io: Io, dir: string): Promise<boolean> {
+  try {
+    return (await io.run(['claude', 'auth', 'logout'], { env: { CLAUDE_CONFIG_DIR: dir }, timeoutMs: 60000 })).exitCode === 0
+  } catch {
+    return false
+  }
 }

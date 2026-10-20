@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
-import { parseArgs, runCommand, type Deps } from '../src/commands'
+import { assertUnderRoot, parseArgs, runCommand, type Deps } from '../src/commands'
 import { linkShared, validLabel } from '../src/folders'
 import { listAccounts, readActive, saveAccount, writeActive } from '../src/store'
 import type { Account } from '../src/types'
@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@b.c' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => {}, confirm: async () => true, ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, ...over,
 })
 
 test('parseArgs', () => {
@@ -89,7 +89,7 @@ test('remove deletes folder and record after confirmation, and cancel keeps them
   await writeActive(io, acct('main', 'u1'))
   await runCommand(io, 'add work', deps())
   const out: string[] = []
-  const logout = async (_: unknown, dir: string) => void out.push(dir)
+  const logout = async (_: unknown, dir: string) => (out.push(dir), true)
   expect(await runCommand(io, 'remove work', deps({ confirm: async () => false, logout }))).toBe('Cancelled.')
   expect(await io.exists('/t/work')).toBe(true)
   await runCommand(io, 'remove work', deps({ logout }))
@@ -152,4 +152,89 @@ test('/tagteam is registered and routed through the hook', async ($, on) => {
   expect(name).toBe('tagteam')
   const r = await $.command.run({ command: 'tagteam', args: 'status' } as never)
   expect(r.text).toContain('Not available')
+})
+
+const spy = (io: Awaited<ReturnType<typeof setup>>) => {
+  const calls: string[] = []
+  const run = io.run
+  return { calls, io: { ...io, run: async (argv: string[], o?: never) => (calls.push(argv[0]!), run(argv, o)) } }
+}
+
+test('state is a reserved label for add and rename', async () => {
+  const io = await setup()
+  expect(await runCommand(io, 'add state', deps())).toContain('reserved')
+  await saveAccount(io, acct('a', 'u1'))
+  expect(await runCommand(io, 'edit a name=state', deps())).toContain('reserved')
+  expect(await io.exists('/t/a')).toBe(false)
+})
+
+test('assertUnderRoot rejects ../, root, state and outside paths; accepts a trailing-slash root', async () => {
+  const io = memoryIo({ HOME: '/h', TAGTEAM_HOME: '/t/' })
+  await expect(assertUnderRoot(io, '/t/a/../../etc')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/t')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/t/')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/t/state')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/t/state/accounts')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/other/a')).rejects.toThrow()
+  await expect(assertUnderRoot(io, '/t/a')).resolves.toBeUndefined()
+})
+
+test('edit rename and remove refuse a dir outside the root without mv, rm or logout', async () => {
+  const base = await setup()
+  await saveAccount(base, { ...acct('x', 'u9'), dir: '/h/important' })
+  await saveAccount(base, acct('main', 'u1', 1))
+  await writeActive(base, acct('main', 'u1'))
+  const { io, calls } = spy(base)
+  let loggedOut = false
+  const d = deps({ logout: async () => ((loggedOut = true), true) })
+  await expect(runCommand(io, 'edit x name=y', d)).rejects.toThrow()
+  await expect(runCommand(io, 'remove x', d)).rejects.toThrow()
+  expect(calls.filter((c) => c === 'mv' || c === 'rm')).toEqual([])
+  expect(loggedOut).toBe(false)
+})
+
+test('remove warns when logout fails and throws, keeping the record, when rm fails', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('main', 'u1'))
+  await writeActive(io, acct('main', 'u1'))
+  await runCommand(io, 'add work', deps())
+  await runCommand(io, 'add job', deps({ login: stubLogin('u3') }))
+  expect(await runCommand(io, 'remove work', deps({ logout: async () => false }))).toContain('sign-out failed')
+  expect(await io.exists('/t/work')).toBe(false)
+  const failRm = { ...io, run: async (argv: string[], o?: never) => (argv[0] === 'rm' && argv[1] === '-rf' ? { exitCode: 1, stdout: '', stderr: 'denied' } : io.run(argv, o)) }
+  await expect(runCommand(failRm, 'remove job', deps())).rejects.toThrow('denied')
+  expect((await listAccounts(io)).map((a) => a.label)).toContain('job')
+})
+
+test('add logs the new folder out on the duplicate path', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('main', 'u-new'))
+  const out: string[] = []
+  await runCommand(io, 'add work', deps({ logout: async (_, d) => (out.push(d), true) }))
+  expect(out).toEqual(['/t/work'])
+})
+
+test('add removes the saved record when a later step fails', async () => {
+  const io = await setup()
+  const bad = { ...io, run: async (argv: string[], o?: never) => (argv[0] === 'mv' && argv[2]?.endsWith('/state/active') ? { exitCode: 1, stdout: '', stderr: 'disk' } : io.run(argv, o)) }
+  expect(await runCommand(bad, 'add work', deps())).toContain('disk')
+  expect(await listAccounts(io)).toEqual([])
+  expect(await io.exists('/t/work')).toBe(false)
+})
+
+test('edit with an unknown key changes nothing', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('a', 'u1'))
+  const text = await runCommand(io, 'edit a nmae=b order=5', deps())
+  expect(text).toContain('name, order, exclude')
+  expect((await listAccounts(io))[0]?.order).toBe(0)
+})
+
+test('a failed mv during rename leaves the old record only', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('a', 'u1'))
+  await io.write('/t/a/f', '1')
+  const failMv = { ...io, run: async (argv: string[], o?: never) => (argv[0] === 'mv' && argv[1] === '/t/a' ? { exitCode: 1, stdout: '', stderr: 'busy' } : io.run(argv, o)) }
+  await expect(runCommand(failMv, 'edit a name=b', deps())).rejects.toThrow('busy')
+  expect((await listAccounts(io)).map((a) => a.label)).toEqual(['a'])
 })
