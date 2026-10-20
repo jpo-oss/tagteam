@@ -1,5 +1,5 @@
 import type { Register } from 'claude-code'
-import { ioFrom } from '../src/io'
+import { ioFrom, takeRun } from '../src/io'
 import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
@@ -11,15 +11,21 @@ export const register: Register = (on, options) => {
   const settings = settingsFrom(options)
   const state = newState()
   let evaluating = false
+  let run: string | undefined
 
   on('session.start', async ($, e, next) => {
+    try {
+      run = (await takeRun($)) ?? run
+    } catch (err) {
+      $.ui.log(`tagteam: could not read the launcher's run id: ${message(err)}`, { to: 'debug' })
+    }
     try {
       await $.command.register({ name: 'tagteam', description: 'Manage and switch Claude accounts' })
     } catch (err) {
       $.ui.log(`tagteam: command registration failed: ${message(err)}`, { to: 'debug' })
     }
     try {
-      await refreshLauncher(ioFrom($), $.plugin.root)
+      await refreshLauncher(ioFrom($, run), $.plugin.root)
     } catch (err) {
       $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
     }
@@ -28,7 +34,7 @@ export const register: Register = (on, options) => {
 
   on('command.run', { command: 'tagteam' }, async ($, e) => {
     const confirm = (q: string) => $.ui.ask(q, ['Remove', 'Cancel']).then((a) => a === 'Remove', () => false)
-    const io = ioFrom($)
+    const io = ioFrom($, run)
     const switchTo = (label: string) => manualSwitch({ io, ui: uiFrom($), state, settings }, label)
     const openPane = async () =>
       (await $.ui.open({ id: 'tagteam', title: 'Accounts' })).isPlaced ? 'Accounts pane opened.' : 'No room for the pane here.'
@@ -45,7 +51,7 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'Pane', requestId: 'tagteam' }, async ($, e) => {
-    const io = ioFrom($)
+    const io = ioFrom($, run)
     try {
       return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns)
     } catch (err) {
@@ -57,7 +63,7 @@ export const register: Register = (on, options) => {
   on('session.measure', async ($, e, next) => {
     const check = !evaluating
     evaluating = true
-    const io = ioFrom($)
+    const io = ioFrom($, run)
     try {
       await recordMeasure(io, { toast: (t) => $.ui.toast(t), status: (t) => $.ui.status(t) }, e.rateLimits)
     } catch (err) {
@@ -79,13 +85,13 @@ export const register: Register = (on, options) => {
 
   on('turn.complete', async ($, e, next) => {
     try {
-      if (e.usage) await recordTurn(ioFrom($), e.usage)
+      if (e.usage) await recordTurn(ioFrom($, run), e.usage)
     } catch (err) {
       $.ui.log(`tagteam: token tracking failed: ${message(err)}`, { to: 'debug' })
     }
     if (e.agentId === undefined) {
       try {
-        await turnEnded({ io: ioFrom($), ui: uiFrom($), state, settings })
+        await turnEnded({ io: ioFrom($, run), ui: uiFrom($), state, settings })
       } catch (err) {
         $.ui.log(`tagteam: switch failed: ${message(err)}`, { to: 'debug' })
       }

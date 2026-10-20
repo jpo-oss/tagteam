@@ -421,3 +421,28 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   expect(commands).toEqual(['exit'])
 })
 
+test('session.start keeps the run id and unsets it for anything the session starts', async ($, on) => {
+  const env: Record<string, string> = { HOME: '/h', TAGTEAM_HOME: '/t', CLAUDE_CONFIG_DIR: '/t/a', TAGTEAM_RUN: 'r1' }
+  const io = memoryIo(env)
+  await saveAccount(io, acct('a', 0))
+  await saveAccount(io, acct('b', 1))
+  await io.write('/t/state/active', 'a\n')
+  await io.write('/t/a/.claude.json', JSON.stringify({ oauthAccount: { accountUuid: 'ua' } }))
+  routeTo(on, io)
+  on('env.set', (_, e) => {
+    if (e.value === undefined) delete env[e.name]
+    else env[e.name] = e.value
+    return { value: {} }
+  })
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/w' }))
+  on('session.id', () => ({ value: 's1' }))
+  on('session.turns', () => ({ value: 1 }))
+  on('clock.after', () => ({ value: undefined }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect('TAGTEAM_RUN' in env).toBe(false)
+  const r = await $.command.run({ command: 'tagteam', args: 'switch b' } as never)
+  expect(r.text).toContain('Switching to b')
+  expect((await request(io))?.target_label).toBe('b')
+})
