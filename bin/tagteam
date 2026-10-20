@@ -198,10 +198,8 @@ cmd_remove() {
   if [ -n "$next" ]; then
     put "$state/active" "$next"
     put "$state/active-dir" "$(field "$accounts/$next.json" dir)"
-    echo "tagteam now starts on $next."
   else
     rm -f "$state/active" "$state/active-dir"
-    echo 'No accounts left for tagteam to start on.'
   fi
 }
 

@@ -1,7 +1,7 @@
 import type { ElementTable } from 'claude-code'
 import type { Io } from './io'
 import { currentAccountUuid, localDay, when } from './session'
-import { listAccounts, loadUsage, readActive } from './store'
+import { listAccounts, loadUsage } from './store'
 import type { Settings, Tokens } from './types'
 import { effectivePercent, windowName } from './usage'
 
@@ -18,9 +18,8 @@ export const barColor = (pct: number, threshold: number): string => (pct >= thre
 
 export type Pane = { rows: Row[]; unmanaged: boolean }
 
-// The highlighted card is the account this session runs on; the launcher default only gets a note.
+// The highlighted card is the account this session runs on.
 export async function paneRows(io: Io, now: number, threshold: number): Promise<Pane> {
-  const launcherDefault = await readActive(io)
   const session = await currentAccountUuid(io)
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now)
@@ -35,11 +34,10 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
     const full = ws.filter((w) => effectivePercent(w, now) >= threshold).map((w) => Date.parse(w.resetsAt ?? '')).filter((t) => !Number.isNaN(t))
     const isActive = a.accountUuid === session
     const limit = full.length ? limited(when(Math.max(...full), now)) : undefined
-    let state = a.excluded ? 'Excluded'
+    const state = a.excluded ? 'Excluded'
       : a.needsSignIn ? 'Needs sign-in'
       : isActive ? (limit ? `This session, ${limit.toLowerCase()}` : 'This session')
       : limit ?? 'Available'
-    if (a.label === launcherDefault && !isActive) state += ', tagteam starts here'
     const windows = ws.map((w) => {
       const reset = Date.parse(w.resetsAt ?? '')
       const pct = Math.round(effectivePercent(w, now))

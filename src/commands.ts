@@ -193,7 +193,6 @@ async function remove(io: Io, label: string, deps: Deps): Promise<string> {
     const next = (await listAccounts(io))[0]
     if (next) await writeActive(io, next)
     else await clearActive(io)
-    text += next ? ` tagteam now starts on ${next.label}.` : ' No accounts left for tagteam to start on.'
   }
   return text
 }

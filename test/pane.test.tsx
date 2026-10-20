@@ -256,22 +256,21 @@ const stateOf = async ($: any) => {
   return { all, highlighted, note: note?.text }
 }
 
-test('the card for the account this session uses is highlighted, and the launcher default is noted', async ($, on) => {
+test('the card for the account this session uses is highlighted', async ($, on) => {
   const io = await seed()
   await io.write('/h/.claude.json', JSON.stringify({ oauthAccount: { accountUuid: 'ud' } }))
   await setup($, on, io)
   const { all, highlighted, note } = await stateOf($)
   expect(card(all, 'd')[1]).toMatch(/State {5}This session, limited for 1h +│$/)
-  expect(card(all, 'a')[1]).toMatch(/State {5}Available, tagteam starts here +│$/)
+  expect(card(all, 'a')[1]).toMatch(/State {5}Available +│$/)
   expect(highlighted).toBe(1)
   expect(note).toBeUndefined()
 })
 
-test('when the session uses the launcher default, one card says This session', async ($, on) => {
+test('only the session card says This session', async ($, on) => {
   await setup($, on, await seed())
   const { all, highlighted } = await stateOf($)
   expect(all.filter((l) => l.includes('This session')).length).toBe(1)
-  expect(all.some((l) => l.includes('tagteam starts here'))).toBe(false)
   expect(highlighted).toBe(1)
 })
 
@@ -282,7 +281,7 @@ test('a session on an account tagteam does not manage highlights nothing and say
   const { all, highlighted, note } = await stateOf($)
   expect(note).toBe("This session uses an account tagteam doesn't manage.")
   expect(highlighted).toBe(0)
-  expect(card(all, 'a')[1]).toMatch(/State {5}Available, tagteam starts here/)
+  expect(card(all, 'a')[1]).toMatch(/State {5}Available +│$/)
 })
 
 test('the pane has a margin each side and a blank line on top', async ($, on) => {

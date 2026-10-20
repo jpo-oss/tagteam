@@ -315,14 +315,13 @@ wait "$dead"
 printf 'dir=%s\npid=%s\n' "$case_dir/home/work" "$dead" > "$case_dir/home/state/run-1-1"
 launch_args='delete work'
 launch TAGTEAM_CONFIRM=y; c1=$?
-it 'delete removes the default when no live session uses it and moves the default to the next account'
+it 'delete removes an account no live session uses'
 if [ "$c1" = 0 ] && [ ! -e "$case_dir/home/work" ] && [ "$(cat "$case_dir/home/state/active")" = home ] &&
-  [ "$(cat "$case_dir/home/state/active-dir")" = "$case_dir/home/home" ] && out_has 'tagteam now starts on home.'; then pass; else fail; fi
+  [ "$(cat "$case_dir/home/state/active-dir")" = "$case_dir/home/home" ]; then pass; else fail; fi
 launch_args='remove home'
 launch TAGTEAM_CONFIRM=y; c2=$?
-it 'removing the last account clears the default'
-if [ "$c2" = 0 ] && [ ! -e "$case_dir/home/state/active" ] && [ ! -e "$case_dir/home/state/active-dir" ] &&
-  out_has 'No accounts left for tagteam to start on.'; then pass; else fail; fi
+it 'removing the last account works'
+if [ "$c2" = 0 ] && [ ! -e "$case_dir/home/state/active" ] && [ ! -e "$case_dir/home/state/active-dir" ]; then pass; else fail; fi
 
 setup remove-outside
 mkdir -p "$case_dir/outside" "$case_dir/home/state/x" "$case_dir/home/a/b"
