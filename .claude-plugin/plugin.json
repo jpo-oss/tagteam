@@ -2,7 +2,9 @@
   "name": "tagteam",
   "version": "0.1.0",
   "description": "Switch between your own Claude subscription accounts when one runs low.",
-  "author": { "name": "jpo-oss contributors" },
+  "author": {
+    "name": "jpo-oss contributors"
+  },
   "repository": "https://github.com/jpo-oss/tagteam",
   "license": "MIT",
   "userConfig": {
