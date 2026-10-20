@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
-import { assertUnderRoot, parseArgs, refreshLauncher, runCommand, type Deps } from '../src/commands'
+import { adoptFolders, assertUnderRoot, parseArgs, refreshLauncher, runCommand, type Deps } from '../src/commands'
 import { linkShared, validLabel } from '../src/folders'
 import { listAccounts, readActive, saveAccount, saveUsage, writeActive } from '../src/store'
 import type { Account } from '../src/types'
@@ -198,6 +198,7 @@ test('assertUnderRoot rejects ../, root, state and outside paths; accepts a trai
   await expect(assertUnderRoot(io, '/t/state')).rejects.toThrow()
   await expect(assertUnderRoot(io, '/t/state/accounts')).rejects.toThrow()
   await expect(assertUnderRoot(io, '/other/a')).rejects.toThrow()
+  for (const bad of ['/t//', '/t//state', '/t/a/b', '/t/../x', '/t/Bad']) await expect(assertUnderRoot(io, bad)).rejects.toThrow()
   await expect(assertUnderRoot(io, '/t/a')).resolves.toBeUndefined()
 })
 
@@ -320,4 +321,85 @@ test('session.start refreshes an installed launcher from the plugin folder', asy
   expect(sources.length).toBeGreaterThan(0)
   expect(sources.every((p) => p.length > '/bin/tagteam'.length)).toBe(true)
   expect(await io.read('/h/.local/bin/tagteam')).toBe('new')
+})
+
+const signedIn = (io: Awaited<ReturnType<typeof setup>>, dir: string, uuid: string, extra = {}) =>
+  io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'w@example.com' }, userID: 'id-1', ...extra }))
+
+test('adoptFolders adds a folder signed in from the terminal once, after the last order', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('main', 'u1', 5))
+  await signedIn(io, '/t/work', 'u-w')
+  expect(await adoptFolders(io, () => undefined)).toEqual(['Added work (w@example.com)'])
+  expect((await listAccounts(io)).find((a) => a.label === 'work')).toMatchObject({ dir: '/t/work', accountUuid: 'u-w', order: 6 })
+  expect((await io.list('/t/work')).sort()).toEqual(['.claude.json', 'projects', 'settings.json'])
+  expect(await adoptFolders(io, () => undefined)).toEqual([])
+})
+
+test('adoptFolders makes the first account active', async () => {
+  const io = await setup()
+  await signedIn(io, '/t/work', 'u-w')
+  await adoptFolders(io, () => undefined)
+  expect(await readActive(io)).toBe('work')
+})
+
+test('adoptFolders seeds app state without touching login keys', async () => {
+  const io = await setup()
+  await signedIn(io, '/t/work', 'u-w', { numStartups: 3 })
+  await adoptFolders(io, () => undefined)
+  const j = JSON.parse((await io.read('/t/work/.claude.json')) ?? '{}')
+  expect(j).toEqual({ oauthAccount: { accountUuid: 'u-w', emailAddress: 'w@example.com' }, userID: 'id-1', numStartups: 3, theme: 'dark' })
+})
+
+test('adoptFolders signs a duplicate login out, deletes its folder and says so once', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('main', 'u-w'))
+  await signedIn(io, '/t/work', 'u-w')
+  const out: string[] = []
+  const signOut = async (_: unknown, d: string) => (out.push(d), true)
+  expect(await adoptFolders(io, () => undefined, signOut)).toEqual(['Removed work: same login as main'])
+  expect(out).toEqual(['/t/work'])
+  expect(await io.exists('/t/work')).toBe(false)
+  expect((await listAccounts(io)).map((a) => a.label)).toEqual(['main'])
+  expect(await adoptFolders(io, () => undefined, signOut)).toEqual([])
+})
+
+test('adoptFolders keeps going past a folder that fails and logs it', async () => {
+  const base = await setup()
+  await signedIn(base, '/t/aaa', 'u-a')
+  await signedIn(base, '/t/bbb', 'u-b')
+  const io = { ...base, run: async (argv: string[], o?: never) => (argv[0] === 'ln' && argv[3]?.startsWith('/t/aaa/') ? { exitCode: 1, stdout: '', stderr: 'denied' } : base.run(argv, o)) }
+  const logs: string[] = []
+  expect(await adoptFolders(io, (t) => logs.push(t))).toEqual(['Added bbb (w@example.com)'])
+  expect(logs.length).toBe(1)
+  expect(logs[0]).toContain('/t/aaa')
+})
+
+test('adoptFolders skips folders without a login, state, bad names and renamed accounts', async () => {
+  const io = await setup()
+  await io.write('/t/empty/x', '')
+  await io.write('/t/half/.claude.json', '{"theme":"dark"}')
+  await io.write('/t/broken/.claude.json', '{')
+  await signedIn(io, '/t/Bad', 'u-b')
+  await saveAccount(io, { ...acct('job', 'u-j'), dir: '/t/work' })
+  await signedIn(io, '/t/work', 'u-j')
+  expect(await adoptFolders(io, () => undefined)).toEqual([])
+  expect((await listAccounts(io)).map((a) => a.label)).toEqual(['job'])
+})
+
+test('/tagteam add points remote users at the terminal command', async () => {
+  const io = await setup()
+  expect(await runCommand(io, 'add work', deps())).toContain('run tagteam add <label> in a terminal')
+})
+
+test('session.start toasts accounts it adopts', async ($, on) => {
+  const io = await setup()
+  await signedIn(io, '/t/work', 'u-w')
+  routeTo(on, io)
+  const toasts: string[] = []
+  on('ui.toast', (_, e) => (toasts.push(String(e.text)), { value: undefined }))
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(toasts).toEqual(['Added work (w@example.com)'])
 })

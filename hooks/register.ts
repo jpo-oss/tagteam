@@ -1,6 +1,6 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
-import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
+import { adoptFolders, parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows, settingsLine } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
 import { checkForUpdate, updateDepsFrom } from '../src/update'
@@ -23,6 +23,12 @@ export const register: Register = (on, options) => {
       await refreshLauncher(ioFrom($), $.plugin.root)
     } catch (err) {
       $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
+    }
+    try {
+      const log = (t: string) => $.ui.log(t, { to: 'debug' })
+      for (const note of await adoptFolders(ioFrom($), log)) $.ui.toast(note)
+    } catch (err) {
+      $.ui.log(`tagteam: adding terminal sign-ins failed: ${message(err)}`, { to: 'debug' })
     }
     // Not awaited: the lookup must never slow session start.
     void checkForUpdate(updateDepsFrom($, ioFrom($), $.plugin.root)).catch((err) =>

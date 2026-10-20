@@ -29,14 +29,16 @@ export async function prepareFolder(io: Io, dir: string): Promise<void> {
   await linkShared(io, dir)
   const file = `${dir}/.claude.json`
   if (await io.exists(file)) return
+  await io.write(file, JSON.stringify(seedAppState(await homeAppState(io)), null, 2) + '\n')
+}
+
+export async function homeAppState(io: Io): Promise<Record<string, unknown>> {
   const text = await io.read(`${await homeDir(io)}/.claude.json`)
-  let home = {}
   try {
-    home = text ? JSON.parse(text) : {}
+    return text ? JSON.parse(text) : {}
   } catch {
-    // unreadable home state: start the account with an empty one
+    return {} // unreadable home state: start the account with an empty one
   }
-  await io.write(file, JSON.stringify(seedAppState(home), null, 2) + '\n')
 }
 
 export async function login(io: Io, dir: string): Promise<void> {
