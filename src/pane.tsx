@@ -1,6 +1,6 @@
 import type { ElementTable } from 'claude-code'
 import type { Io } from './io'
-import { localDay, when } from './session'
+import { currentAccountUuid, localDay, when } from './session'
 import { listAccounts, loadUsage, readActive } from './store'
 import type { Settings, Tokens } from './types'
 import { effectivePercent, windowName } from './usage'
@@ -16,23 +16,30 @@ const limited = (s: string): string => (s.startsWith('in ') ? `Limited for ${s.s
 
 export const barColor = (pct: number, threshold: number): string => (pct >= threshold ? 'error' : pct >= 70 ? 'warning' : 'success')
 
-export async function paneRows(io: Io, now: number, threshold: number): Promise<Row[]> {
-  const active = await readActive(io)
+export type Pane = { rows: Row[]; unmanaged: boolean }
+
+// The highlighted card is the account this session runs on; the launcher default only gets a note.
+export async function paneRows(io: Io, now: number, threshold: number): Promise<Pane> {
+  const launcherDefault = await readActive(io)
+  const session = await currentAccountUuid(io)
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
     return localDay(d.getTime())
   })
   const rows: Row[] = []
-  for (const a of await listAccounts(io)) {
+  const accounts = await listAccounts(io)
+  for (const a of accounts) {
     const u = await loadUsage(io, a.accountUuid)
     const ws = Object.values(u.windows)
     const full = ws.filter((w) => effectivePercent(w, now) >= threshold).map((w) => Date.parse(w.resetsAt ?? '')).filter((t) => !Number.isNaN(t))
-    const isActive = a.label === active
-    const state = a.excluded ? 'Excluded'
+    const isActive = a.accountUuid === session
+    const limit = full.length ? limited(when(Math.max(...full), now)) : undefined
+    let state = a.excluded ? 'Excluded'
       : a.needsSignIn ? 'Needs sign-in'
-      : full.length ? limited(when(Math.max(...full), now))
-      : isActive ? 'Active' : 'Available'
+      : isActive ? (limit ? `This session, ${limit.toLowerCase()}` : 'This session')
+      : limit ?? 'Available'
+    if (a.label === launcherDefault && !isActive) state += ', tagteam starts here'
     const windows = ws.map((w) => {
       const reset = Date.parse(w.resetsAt ?? '')
       const pct = Math.round(effectivePercent(w, now))
@@ -46,7 +53,7 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
       early: last ? `early, ${when(last, now)}` : undefined,
     })
   }
-  return rows
+  return { rows, unmanaged: session !== undefined && !accounts.some((a) => a.accountUuid === session) }
 }
 
 type Parts = Pick<ElementTable, 'Box' | 'Text'>
@@ -116,7 +123,8 @@ const cardLines = (r: Row, columns: number, bar: number): Seg[][] => {
     ? r.windows.map((w) => {
       const filled = Math.round((Math.min(100, Math.max(0, w.pct)) / 100) * bar)
       return line(w.name, [
-        { text: '█'.repeat(filled) + '░'.repeat(bar - filled), color: w.color },
+        { text: '█'.repeat(filled), color: w.color },
+        { text: '░'.repeat(bar - filled), dimColor: true },
         { text: ` ${`${w.pct}%`.padStart(4)}${w.reset ? `  ${w.reset}` : ''}` },
       ])
     })
@@ -132,14 +140,19 @@ const cardLines = (r: Row, columns: number, bar: number): Seg[][] => {
 }
 
 // A function declaration, like the other files that take engine parts.
-export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number, settings: string) {
+export function drawPane({ Box, Text }: Parts, { rows, unmanaged }: Pane, bodyColumns: number, settings: string) {
+  // One column of margin each side and a blank line on top.
+  const columns = Math.max(1, bodyColumns - 2)
+  const frame = { flexDirection: 'column', width: bodyColumns, paddingX: 1, paddingTop: 1 } as const
   const head = plain(settings, columns).map((l, i) => <Text key={`s${i}`}>{l}</Text>)
-  if (!rows.length) return <Box flexDirection="column">{head}{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
+  if (!rows.length) return <Box {...frame}>{head}{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
+  const note = unmanaged ? plain("This session uses an account tagteam doesn't manage.", columns).map((l, i) => <Text key={`u${i}`} dimColor>{l}</Text>) : []
   // Room left beside the label, percent and the longest reset text ("resets Thu 12:30 PM").
   const bar = Math.max(3, Math.min(10, columns - 4 - LABEL - 7 - 19))
   return (
-    <Box flexDirection="column" width={columns}>
+    <Box {...frame}>
       <Box marginBottom={1} flexDirection="column">{head}</Box>
+      {note.length ? <Box marginBottom={1} flexDirection="column">{note}</Box> : null}
       {rows.map((r) => (
         <Box key={r.label} flexDirection="column">
           {cardLines(r, columns, bar).map((segs, i) => (
@@ -151,6 +164,7 @@ export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number, set
   )
 }
 
-export function drawError({ Box, Text }: Parts, msg: string, columns: number) {
-  return <Box flexDirection="column">{plain(`tagteam: cannot read accounts: ${msg}`, columns).map((l, i) => <Text key={String(i)}>{l}</Text>)}</Box>
+export function drawError({ Box, Text }: Parts, msg: string, bodyColumns: number) {
+  const columns = Math.max(1, bodyColumns - 2)
+  return <Box flexDirection="column" width={bodyColumns} paddingX={1} paddingTop={1}>{plain(`tagteam: cannot read accounts: ${msg}`, columns).map((l, i) => <Text key={String(i)}>{l}</Text>)}</Box>
 }
