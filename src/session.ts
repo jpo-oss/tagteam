@@ -30,10 +30,39 @@ export const localDay = (ms: number): string => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-export const when = (ms: number, now: number): string => {
+const uses24h = (): boolean => {
+  try {
+    const c = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hourCycle
+    return c === 'h23' || c === 'h24'
+  } catch {
+    return false
+  }
+}
+
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// Every time shown to the person: "in 5h 20m", "2h ago", "Thu 8 PM", "Oct 30".
+export const when = (ms: number, now: number, h24 = uses24h()): string => {
+  const mins = Math.round(Math.abs(ms - now) / 60_000)
+  if (mins < 24 * 60) {
+    if (mins === 0) return 'now'
+    const span = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${mins % 60 ? ` ${mins % 60}m` : ''}`
+    return ms > now ? `in ${span}` : `${span} ago`
+  }
   const d = new Date(ms)
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  return localDay(ms) === localDay(now) ? hm : `${localDay(ms)} ${hm}`
+  if (mins >= 7 * 24 * 60) return `${MONTHS[d.getMonth()]} ${d.getDate()}`
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const mm = String(m).padStart(2, '0')
+  const time = h24 ? `${String(h).padStart(2, '0')}:${mm}` : `${h % 12 || 12}${m ? `:${mm}` : ''} ${h < 12 ? 'AM' : 'PM'}`
+  return `${DAYS[d.getDay()]} ${time}`
+}
+
+// "in 3h 20m" stays as is; a day or date gets "at": "at Thu 8 PM".
+export const whenAt = (ms: number, now: number): string => {
+  const s = when(ms, now)
+  return s.startsWith('in ') || s === 'now' ? s : `at ${s}`
 }
 
 const showStatus = async (io: Io, ui: Pick<Ui, 'status'>, uuid: string, windows: Record<string, Reading>, now: number) => {
