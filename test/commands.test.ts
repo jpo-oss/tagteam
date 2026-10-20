@@ -16,9 +16,9 @@ const setup = async () => {
   return io
 }
 const acct = (label: string, uuid: string, order = 0): Account =>
-  ({ label, dir: `/t/${label}`, accountUuid: uuid, email: `${label}@x.io`, order, excluded: false, needsSignIn: false })
+  ({ label, dir: `/t/${label}`, accountUuid: uuid, email: `${label}@example.com`, order, excluded: false, needsSignIn: false })
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
-  io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@b.c' } }))
+  io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@example.com' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
   login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', ...over,
 })
@@ -50,7 +50,7 @@ test('linkShared links settings and projects, not credentials, and is idempotent
 test('add saves the account, activates the first, and warns about the browser', async () => {
   const io = await setup()
   const text = await runCommand(io, 'add work', deps())
-  expect(text).toContain('a@b.c')
+  expect(text).toContain('a@example.com')
   expect(text).toContain('browser')
   const [a] = await listAccounts(io)
   expect(a).toMatchObject({ label: 'work', accountUuid: 'u-new', order: 0, dir: '/t/work' })
@@ -285,13 +285,22 @@ test('install needs the terminal', async () => {
   expect(await runCommand({ ...io, run: async () => { throw new Error('CLI only') } }, 'install', deps())).toBe('Run this from the terminal.')
 })
 
+const OLD_LAUNCHER = '#!/bin/sh\n# Runs claude on the active tagteam account and, when\nold\n'
+
 test('refreshLauncher only updates an installed launcher that differs', async () => {
   const { io } = await withPath('/usr/bin')
   await refreshLauncher(io, '/p')
   expect(await io.exists('/h/.local/bin/tagteam')).toBe(false)
-  await io.write('/h/.local/bin/tagteam', 'old')
+  await io.write('/h/.local/bin/tagteam', OLD_LAUNCHER)
   await refreshLauncher(io, '/p')
   expect(await io.read('/h/.local/bin/tagteam')).toBe('#!/bin/sh\nv1\n')
+})
+
+test('refreshLauncher leaves a different program called tagteam alone', async () => {
+  const { io } = await withPath('/usr/bin')
+  await io.write('/h/.local/bin/tagteam', '#!/bin/sh\necho someone else\n')
+  await refreshLauncher(io, '/p')
+  expect(await io.read('/h/.local/bin/tagteam')).toBe('#!/bin/sh\necho someone else\n')
 })
 
 test('session.start refreshes an installed launcher from the plugin folder', async ($, on) => {
@@ -304,7 +313,7 @@ test('session.start refreshes an installed launcher from the plugin folder', asy
     read: async (p: string) => (isSource(p) ? (sources.push(p), 'new') : base.read(p)),
   }
   routeTo(on, io)
-  await io.write('/h/.local/bin/tagteam', 'old')
+  await io.write('/h/.local/bin/tagteam', OLD_LAUNCHER)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })

@@ -172,10 +172,14 @@ async function install(io: Io, pluginRoot: string): Promise<string> {
     : `${done} ${bin} is not on your PATH. Add it in your shell profile, then start Claude with \`tagteam\`.`
 }
 
+// bin/tagteam's own header line, so a different program called tagteam is never replaced.
+const LAUNCHER_HEADER = '# Runs claude on the active tagteam account'
+
 // Keeps an installed launcher in step with plugin updates; never installs one unasked.
 export async function refreshLauncher(io: Io, pluginRoot: string): Promise<void> {
   const dest = await launcherPath(io)
-  if (await io.exists(dest)) await copyLauncher(io, pluginRoot, dest)
+  const head = ((await io.read(dest)) ?? '').split('\n', 5)
+  if (head.some((l) => l.startsWith(LAUNCHER_HEADER))) await copyLauncher(io, pluginRoot, dest)
 }
 
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
