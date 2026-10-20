@@ -12,7 +12,11 @@ const total = (t?: Tokens): number => (t ? t.input + t.output : 0)
 const short = (n: number): string => (n < 1000 ? String(n) : n < 1e6 ? `${(n / 1e3).toFixed(1)}k` : `${(n / 1e6).toFixed(1)}M`)
 const NAMES: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly' }
 
-const limited = (s: string): string => (s.startsWith('in ') ? `Limited for ${s.slice(3)}` : `Limited until ${s}`)
+const DAYS: Record<string, string> = { Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' }
+const limited = (s: string): string => {
+  const m = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (.+)$/.exec(s)
+  return m ? `Resets ${DAYS[m[1] ?? ''] ?? m[1]}, ${m[2]}` : `Resets ${s}`
+}
 
 export const barColor = (pct: number, threshold: number): string => (pct >= threshold ? 'error' : pct >= 70 ? 'warning' : 'success')
 
@@ -36,7 +40,7 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
     const limit = full.length ? limited(when(Math.max(...full), now)) : undefined
     const state = a.excluded ? 'Excluded'
       : a.needsSignIn ? 'Needs sign-in'
-      : isActive ? (limit ? `This session, ${limit.toLowerCase()}` : 'This session')
+      : isActive ? (limit ? `This session, ${limit[0]?.toLowerCase()}${limit.slice(1)}` : 'This session')
       : limit ?? 'Available'
     const windows = ws.map((w) => {
       const reset = Date.parse(w.resetsAt ?? '')
