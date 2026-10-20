@@ -4,7 +4,7 @@ tagteam tracks usage across your own Claude subscription accounts and shows it i
 
 tagteam never reads or stores your login. Each account signs in through Anthropic's own page, and Claude Code keeps the login in that account's folder.
 
-Works with Claude Code. Not made by or affiliated with Anthropic. Use of Claude is subject to Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup).
+Use of Claude is subject to Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup).
 
 ## Install
 
