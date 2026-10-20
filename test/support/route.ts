@@ -20,5 +20,6 @@ export const routeTo = (on: On, io: Io): void => {
   on('clock.now', async () => ({ value: await io.now() }))
   on('ui.log', () => ({ value: undefined }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 }

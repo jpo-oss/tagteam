@@ -155,3 +155,7 @@ export const pruneDecisions = async (io: Io, now: number): Promise<void> => {
     if (/^\d+$/.test(last) && Number(last) * 1000 <= now) await retire(io, `${dir}/${name}`)
   }
 }
+
+export const dropDecision = async (io: Io, uuid: string, kind: string, resetsAt?: string): Promise<void> => {
+  await retire(io, await decisionDir(io, uuid, kind, resetsAt))
+}
