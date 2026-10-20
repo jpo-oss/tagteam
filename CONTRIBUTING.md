@@ -11,7 +11,6 @@ Bug reports and pull requests are welcome. For anything bigger than a fix, open 
 ## Releases
 
 - Release PRs are opened by release-please using the `RELEASE_PLEASE_TOKEN` repo secret (a fine-grained token limited to this repo), so CI runs on them like any other PR.
-- `release-as` in `release-please-config.json` forces the first release to 0.1.0. Remove it after that release.
 
 ## Checks
 
