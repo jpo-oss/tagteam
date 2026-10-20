@@ -31,7 +31,8 @@ TEST_SH=dash sh test/launcher.test.sh
 ## Launcher rules
 
 - POSIX `sh` only.
-- Reads plain `key=value` state files. No `jq`, no JSON.
+- Reads plain `key=value` state files. No `jq`. `add`, `remove` and `list` read account records one `"key": value` line at a time with `sed`, and never write them.
+- `tagteam add` only signs a folder in. The plugin adopts it at the next session start: links, seeded app state, duplicate check, record.
 - Passes the user's arguments through untouched on the first launch. On relaunch it drops session flags (`-c`, `-r`, `--resume`, `--session-id`, `--fork-session`, `--from-pr`, `--teleport`) stopping at `--`, and the order is `claude --resume <session> <handover> <original args>`, or plain `claude <original args>` when the request has no session.
 
 ## Plugin rules

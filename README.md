@@ -26,6 +26,8 @@ Use of Claude is subject to Anthropic's [Usage Policy](https://www.anthropic.com
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
+On a machine you reach over SSH, where a browser can't open, add accounts with `tagteam add <label>` in a terminal instead (see below).
+
 Claude Code doesn't auto-update plugins from third-party marketplaces like this one by default. To update, run `claude plugin update tagteam@tagteam`, or turn on auto-update in `/plugin` under **Marketplaces**, **tagteam**, **Enable auto-update**. The launcher picks up the new version at your next session start.
 
 ## Usage
@@ -65,6 +67,16 @@ Other commands:
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
 | `/tagteam remove <label>` | Signs the account out and deletes its folder. You can't remove the active account. |
+
+You can also manage accounts from a terminal, outside Claude. This is the way to add one on a remote machine: it prints the sign-in link, and you can open it on any device and paste the code back.
+
+| Command | What it does |
+|---|---|
+| `tagteam add <label>` | Signs a new account in. Claude picks it up at the next session start. |
+| `tagteam remove <label>` | Asks first, then signs the account out and deletes its folder |
+| `tagteam list` | Lists the accounts, marking the active one |
+
+Only `add`, `remove` and `list` as the first word are tagteam's. Anything else goes to Claude, and `tagteam -- add` sends `add` to Claude as a prompt.
 
 If an account's login lapses, sign it in again with `/tagteam remove <label>` and then `/tagteam add <label>`. Switch away from it first if it's the active one.
 
