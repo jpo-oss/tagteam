@@ -18,6 +18,7 @@ export const routeTo = (on: On, io: Io): void => {
   }))
   on('env.get', async (_, e) => ({ value: await io.env(e.name as EnvName) }))
   on('clock.now', async () => ({ value: await io.now() }))
+  on('ui.log', () => ({ value: undefined }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
 }

@@ -87,6 +87,26 @@ test('turn.complete adds the turn tokens to today', async ($, on) => {
 test('no account file means nothing is recorded', async ($, on) => {
   const io = await setup({ uuid: '' })
   routeTo(on, io)
-  await $.turn.complete(turn)
+  const r = await $.turn.complete(turn)
+  expect(r.text).toBe('')
   expect(await io.exists('/t/state')).toBe(false)
+})
+
+test('a corrupt usage file never breaks measure or turn.complete', async ($, on) => {
+  const io = await setup()
+  await io.write('/t/state/usage/u1.json', '{nope')
+  routeTo(on, io)
+  const m = await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 5 }]))
+  expect(m.changed).toEqual(['rateLimits'])
+  expect((await $.turn.complete({ ...turn, answer: 'hi' })).text).toBe('hi')
+})
+
+test('a corrupt account file never breaks measure or turn.complete', async ($, on) => {
+  const io = await setup()
+  await io.write('/t/state/accounts/bad.json', '{nope')
+  routeTo(on, io)
+  const m = await $.session.measure(measure([{ kind: 'five_hour', percentUsed: 5 }]))
+  expect(m.changed).toEqual(['rateLimits'])
+  expect((await $.turn.complete({ ...turn, answer: 'hi' })).text).toBe('hi')
+  expect((await usageOf(io))?.windows.five_hour?.percentUsed).toBe(5)
 })

@@ -42,8 +42,12 @@ export const recordMeasure = async (io: Io, ui: Ui, readings: readonly Reading[]
   const now = await io.now()
   const { next, earlyResets } = applyReadings(await loadUsage(io, uuid), readings, now)
   await saveUsage(io, next)
-  for (const kind of earlyResets) ui.toast(`Your ${kind} usage window reset early`)
-  await showStatus(io, ui, uuid, next.windows, now)
+  try {
+    for (const kind of earlyResets) ui.toast(`Your ${kind} usage window reset early`)
+    await showStatus(io, ui, uuid, next.windows, now)
+  } catch {
+    // display only: the reading is already saved
+  }
 }
 
 export const recordTurn = async (
