@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/jpo-oss/tagteam/compare/v0.2.0...v0.3.0) (2026-10-20)
+
+
+### Features
+
+* refresh account usage and show which account this session uses ([#15](https://github.com/jpo-oss/tagteam/issues/15)) ([6d8bf9f](https://github.com/jpo-oss/tagteam/commit/6d8bf9f4eee15e7b2775c38c28adfc5974bdc689))
+
 ## [0.2.0](https://github.com/jpo-oss/tagteam/compare/v0.1.0...v0.2.0) (2026-10-20)
 
 
