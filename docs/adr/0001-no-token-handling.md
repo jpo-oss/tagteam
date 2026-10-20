@@ -11,5 +11,5 @@ tagteam never reads, copies, stores or moves login tokens, `.credentials.json` c
 ## Consequences
 
 - Each account, including the one you already use, needs one sign-in at setup.
-- `~/.claude.json` and `~/.claude` are read but never written.
+- tagteam reads `~/.claude.json` and `~/.claude` but never writes them.
 - A login that expires while idle can't be refreshed by tagteam. The account would need signing in again.

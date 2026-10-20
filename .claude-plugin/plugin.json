@@ -23,7 +23,7 @@
     "stallTimeoutSeconds": {
       "type": "number",
       "title": "Stall timeout (seconds)",
-      "description": "How long to wait for a stalled session before switching.",
+      "description": "How long to wait for Claude to close on its own after a switch before the launcher closes it.",
       "default": 30
     }
   }
