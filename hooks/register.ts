@@ -3,6 +3,7 @@ import { ioFrom } from '../src/io'
 import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows, settingsLine } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
+import { checkForUpdate, updateDepsFrom } from '../src/update'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -23,6 +24,10 @@ export const register: Register = (on, options) => {
     } catch (err) {
       $.ui.log(`tagteam: launcher update failed: ${message(err)}`, { to: 'debug' })
     }
+    // Not awaited: the lookup must never slow session start.
+    void checkForUpdate(updateDepsFrom($, ioFrom($), $.plugin.root)).catch((err) =>
+      $.ui.log(`tagteam: update check failed: ${message(err)}`, { to: 'debug' }),
+    )
     return next(e)
   })
 
