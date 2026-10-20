@@ -257,7 +257,8 @@ launch_args='add work'
 launch; code=$?
 it 'add signs the new folder in and leaves the record to the plugin'
 if [ "$code" = 0 ] && authed "login $case_dir/home/work" && [ -f "$case_dir/home/work/.claude.json" ] &&
-  [ ! -e "$case_dir/home/state/accounts/work.json" ] && runs 0 &&
+  [ ! -e "$case_dir/home/state/accounts/work.json" ] && runs 1 && [ "$(field 1 cfg)" = "$case_dir/home/work" ] &&
+  args_are 1 -p --model haiku 'Reply with OK.' &&
   out_has "Added work (a@example.com). It's ready the next time you start tagteam." && out_has 'open the URL on another device'; then pass; else fail; fi
 
 setup add-dup-email
@@ -357,6 +358,18 @@ launch_args=list
 launch
 it 'list with no accounts says how to add one'
 if out_has 'tagteam add <label>'; then pass; else fail; fi
+
+setup refresh
+record zed "$case_dir/home/zed" z@example.com 0 true
+record alpha "$case_dir/home/alpha" a@example.com 1 false
+record beta "$case_dir/home/beta" b@example.com 2 false
+echo 'exit 1' > "$case_dir/fake/mode-2"
+launch_args=refresh
+launch; code=$?
+it 'refresh runs one short prompt per usable account, reports failures, then lists'
+if [ "$code" = 0 ] && runs 2 && [ "$(field 1 cfg)" = "$case_dir/home/alpha" ] && [ "$(field 2 cfg)" = "$case_dir/home/beta" ] &&
+  args_are 1 -p --model haiku 'Reply with OK.' && out_has 'Refreshed 1 of 3 accounts. Failed: beta.' &&
+  out_has '  alpha  a@example.com'; then pass; else fail; fi
 
 setup dashdash-add
 launch_args='-- add'

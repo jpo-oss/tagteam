@@ -11,12 +11,31 @@ export type Deps = {
   switchTo(label: string): Promise<string>
   pluginRoot: string
   openPane(): Promise<string>
+  refreshLater(accounts: Account[]): void
 }
 
-export const realDeps = (confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string, openPane: Deps['openPane']): Deps =>
-  ({ login, logout, confirm, switchTo, pluginRoot, openPane })
+export const realDeps = (
+  confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string, openPane: Deps['openPane'], refreshLater: Deps['refreshLater'],
+): Deps => ({ login, logout, confirm, switchTo, pluginRoot, openPane, refreshLater })
 
-export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | install'
+export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | refresh | install'
+
+// A one-line run on each account: that session loads tagteam too and records its own usage reading.
+export async function refreshAccounts(io: Io, accounts: readonly Account[]): Promise<string> {
+  const failed: string[] = []
+  let done = 0
+  for (const a of accounts) {
+    if (a.excluded || a.needsSignIn) continue
+    try {
+      const r = await io.run(['claude', '-p', '--model', 'haiku', 'Reply with OK.'], { env: { CLAUDE_CONFIG_DIR: a.dir, TAGTEAM_REFRESH: '1' }, stdin: '', timeoutMs: 60_000 })
+      if (r.exitCode === 0) done++
+      else failed.push(a.label)
+    } catch {
+      failed.push(a.label)
+    }
+  }
+  return `Refreshed ${done} of ${accounts.length} accounts.${failed.length ? ` Failed: ${failed.join(', ')}.` : ''}`
+}
 const TERMINAL = 'Run this from the terminal.'
 
 export function parseArgs(args: string): { sub: string; label?: string; opts: Record<string, string> } {
@@ -82,9 +101,12 @@ async function add(io: Io, label: string, deps: Deps): Promise<string> {
       await cleanup(io, dir, label, deps.logout)
       return `That login is already the account "${dup.label}". Nothing added.`
     }
+    deps.refreshLater([account!])
     return `Added ${label} (${account!.email}). The browser signs in whichever claude.ai account it already has open, so check it matches.`
   } catch (err) {
     await cleanup(io, dir, label, deps.logout)
+    // Ctrl+C during sign-in aborts the login process.
+    if (err instanceof Error && /\baborted\b/.test(err.message)) return 'Cancelled. Nothing added.'
     return `Could not add ${label}: ${err instanceof Error ? err.message : String(err)}`
   }
 }
@@ -218,8 +240,8 @@ export async function refreshLauncher(io: Io, pluginRoot: string): Promise<void>
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
   const { sub, label, opts } = parseArgs(args)
   if (sub === '' || sub === 'status') return deps.openPane()
-  if (sub !== 'add' && sub !== 'edit' && sub !== 'remove' && sub !== 'switch' && sub !== 'install') return USAGE
-  if (sub !== 'install') {
+  if (!['add', 'edit', 'remove', 'switch', 'install', 'refresh'].includes(sub)) return USAGE
+  if (sub !== 'install' && sub !== 'refresh') {
     if (!label) return USAGE
     const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
     if (problem) return problem
@@ -230,6 +252,11 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
     return TERMINAL
   }
   if (sub === 'install') return install(io, deps.pluginRoot)
+  if (sub === 'refresh') {
+    const text = await refreshAccounts(io, await listAccounts(io))
+    await deps.openPane().catch(() => undefined)
+    return text
+  }
   if (!label) return USAGE
   if (sub === 'switch') return deps.switchTo(label)
   if (sub === 'add') return `${await add(io, label, deps)}\n${REMOTE}`

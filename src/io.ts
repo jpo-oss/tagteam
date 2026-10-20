@@ -8,14 +8,14 @@ export type Io = {
   exists(path: string): Promise<boolean>
   list(path: string): Promise<string[]>
   mtimeMs(path: string): Promise<number | undefined>
-  run(argv: string[], opts?: { env?: Record<string, string>; timeoutMs?: number }): Promise<RunResult>
+  run(argv: string[], opts?: { env?: Record<string, string>; stdin?: string; timeoutMs?: number }): Promise<RunResult>
   env(name: EnvName): Promise<string | undefined>
   now(): Promise<number>
   sleep(ms: number): Promise<void>
 }
 
 // $.env.get needs a literal name, so ioFrom lists every variable the mod reads.
-export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR' | 'TAGTEAM_RUN' | 'PATH'
+export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR' | 'TAGTEAM_RUN' | 'PATH' | 'TAGTEAM_REFRESH'
 
 type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock' | 'session'>
 
@@ -34,6 +34,7 @@ export function ioFrom($: Dollar): Io {
       // A claude -p started from inside a tagteam session inherits the variable but has no terminal, so it isn't the launched session.
       if (n === 'TAGTEAM_RUN') return (await $.session.surfaces()).includes('terminal') ? $.env.get('TAGTEAM_RUN') : undefined
       if (n === 'PATH') return $.env.get('PATH')
+      if (n === 'TAGTEAM_REFRESH') return $.env.get('TAGTEAM_REFRESH')
       return $.env.get('CLAUDE_CONFIG_DIR')
     },
     now: () => $.clock.now(),
