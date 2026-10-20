@@ -1,8 +1,8 @@
 import type { Register } from 'claude-code'
 import { ioFrom } from '../src/io'
-import { realDeps, refreshLauncher, runCommand } from '../src/commands'
+import { parseArgs, realDeps, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows } from '../src/pane'
-import { recordMeasure, recordTurn } from '../src/session'
+import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err))
@@ -32,11 +32,16 @@ export const register: Register = (on, options) => {
     const switchTo = (label: string) => manualSwitch({ io, ui: uiFrom($), state, settings }, label)
     const openPane = async () =>
       (await $.ui.open({ id: 'tagteam', title: 'Accounts' })).isPlaced ? 'Accounts pane opened.' : 'No room for the pane here.'
+    let text: string
     try {
-      return { text: await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root, openPane)) }
+      text = await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root, openPane))
     } catch (err) {
-      return { text: `tagteam: ${message(err)}` }
+      text = `tagteam: ${message(err)}`
     }
+    if (['add', 'edit', 'remove'].includes(parseArgs(e.args).sub)) {
+      await refreshStatus(io, { status: (t) => $.ui.status(t) }).catch(() => undefined)
+    }
+    return { text }
   })
 
   on('ui.render', { component: 'Pane', requestId: 'tagteam' }, async ($, e) => {
