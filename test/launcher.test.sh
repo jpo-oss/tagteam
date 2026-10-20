@@ -3,6 +3,7 @@
 cd "$(dirname "$0")/.." || exit 1
 repo=$(pwd)
 fails=0
+launch_input=
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -13,7 +14,7 @@ setup() {
   : > "$case_dir/fake/log"
 }
 
-# launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
+# launch_input is stdin. launch_lines (one argument per line) beats launch_args (split on spaces); VAR=value words go to the environment.
 launch() {
   (
     unset CLAUDE_CONFIG_DIR
@@ -29,7 +30,7 @@ launch() {
       # shellcheck disable=SC2086
       set -- ${launch_args:---model opus}
     fi
-    "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" </dev/null >"$case_dir/out" 2>&1
+    printf '%s' "$launch_input" | "${TEST_SH:-sh}" "$repo/bin/tagteam" "$@" >"$case_dir/out" 2>&1
   )
 }
 
@@ -237,6 +238,130 @@ if [ "$(field 1 cfg)" = UNSET ]; then pass; else fail; fi
 setup header
 it 'keeps the header line the plugin uses to recognise an installed launcher'
 if sed -n 2p bin/tagteam | grep -q '^# Runs claude on the active tagteam account'; then pass; else fail; fi
+
+# record <label> <dir> <email> <order> <excluded>, in the plugin's JSON layout
+record() {
+  mkdir -p "$case_dir/home/state/accounts"
+  printf '{\n  "label": "%s",\n  "dir": "%s",\n  "accountUuid": "u-%s",\n  "email": "%s",\n  "order": %s,\n  "excluded": %s,\n  "needsSignIn": false\n}\n' \
+    "$1" "$2" "$1" "$3" "$4" "$5" > "$case_dir/home/state/accounts/$1.json"
+}
+out_has() { grep -qF -- "$1" "$case_dir/out"; }
+authed() { grep -qxF -- "$1" "$case_dir/fake/auth" 2>/dev/null; }
+
+setup add
+launch_args='add work'
+launch; code=$?
+it 'add signs the new folder in and leaves the record to the plugin'
+if [ "$code" = 0 ] && authed "login $case_dir/home/work" && [ -f "$case_dir/home/work/.claude.json" ] &&
+  [ ! -e "$case_dir/home/state/accounts/work.json" ] && runs 0 &&
+  out_has "Added work (a@example.com). It's ready the next time you start tagteam." && out_has 'open the URL on another device'; then pass; else fail; fi
+
+setup add-dup-email
+record main "$case_dir/home/main" a@example.com 0 false
+launch_args='add work'
+launch; code=$?
+it 'add warns when another account already has that email'
+if [ "$code" = 0 ] && out_has 'already the account main'; then pass; else fail; fi
+
+setup add-bad-label
+launch_args='add Work'
+launch; code=$?
+it 'add rejects a bad label without signing in'
+if [ "$code" = 2 ] && [ ! -e "$case_dir/home/Work" ] && [ ! -e "$case_dir/fake/auth" ]; then pass; else fail; fi
+launch_args='add state'
+launch; code=$?
+it 'add rejects the reserved label state'
+if [ "$code" = 2 ] && [ ! -e "$case_dir/fake/auth" ]; then pass; else fail; fi
+
+setup add-existing
+mkdir -p "$case_dir/home/work"
+record job "$case_dir/home/job" j@example.com 0 false
+launch_args='add work'
+launch; c1=$?
+launch_args='add job'
+launch; c2=$?
+it 'add refuses an existing folder or record'
+if [ "$c1" != 0 ] && [ "$c2" != 0 ] && out_has 'already exists' && [ ! -e "$case_dir/fake/auth" ]; then pass; else fail; fi
+
+setup add-fails
+echo fail > "$case_dir/fake/login"
+launch_args='add work'
+launch; code=$?
+it 'a failed sign-in removes the new folder'
+if [ "$code" != 0 ] && [ ! -e "$case_dir/home/work" ] && out_has 'not added'; then pass; else fail; fi
+
+setup remove-active
+mkdir -p "$case_dir/home/work"
+record work "$case_dir/home/work" w@example.com 0 false
+echo work > "$case_dir/home/state/active"
+launch_args='remove work' launch_input=y
+launch; code=$?
+it 'remove refuses the active account'
+if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'active account'; then pass; else fail; fi
+
+setup remove-outside
+mkdir -p "$case_dir/outside" "$case_dir/home/state/x"
+record x "$case_dir/outside" x@example.com 0 false
+record y "$case_dir/home/state/x" y@example.com 1 false
+record z "$case_dir/home/a/../../outside" z@example.com 2 false
+launch_args='remove x' launch_input=y
+launch; c1=$?
+launch_args='remove y'
+launch; c2=$?
+launch_args='remove z'
+launch; c3=$?
+it 'remove refuses a folder outside the root, in state, or with ..'
+if [ "$c1" != 0 ] && [ "$c2" != 0 ] && [ "$c3" != 0 ] && [ -d "$case_dir/outside" ] && [ -d "$case_dir/home/state/x" ] &&
+  [ -f "$case_dir/home/state/accounts/x.json" ] && [ ! -e "$case_dir/fake/auth" ] && out_has 'refusing'; then pass; else fail; fi
+
+setup remove-no
+mkdir -p "$case_dir/home/work"
+record work "$case_dir/home/work" w@example.com 0 false
+launch_args='remove work' launch_input=n
+launch; code=$?
+it 'remove answered n keeps everything'
+if [ "$code" != 0 ] && [ -d "$case_dir/home/work" ] && [ -f "$case_dir/home/state/accounts/work.json" ] &&
+  [ ! -e "$case_dir/fake/auth" ] && out_has 'Remove work (w@example.com)? [y/N]'; then pass; else fail; fi
+
+setup remove-yes
+mkdir -p "$case_dir/home/work"
+record work "$case_dir/home/work" w@example.com 0 false
+launch_args='remove work' launch_input=y
+launch; code=$?
+it 'remove answered y signs out, deletes the folder and the record'
+if [ "$code" = 0 ] && authed "logout $case_dir/home/work" && [ ! -e "$case_dir/home/work" ] &&
+  [ ! -e "$case_dir/home/state/accounts/work.json" ] && out_has 'Removed work.'; then pass; else fail; fi
+launch_input=
+
+setup list
+record zed "$case_dir/home/zed" z@example.com 0 true
+record alpha "$case_dir/home/alpha" a@example.com 1 false
+record beta "$case_dir/home/beta" b@example.com 1 false
+echo alpha > "$case_dir/home/state/active"
+launch_args=list
+launch; code=$?
+it 'list shows accounts in order with the active one marked'
+if [ "$code" = 0 ] && printf '%s\n' '  zed  z@example.com (excluded)' '* alpha  a@example.com' '  beta  b@example.com' \
+  'Usage and reset times: /tagteam status inside Claude.' | cmp -s - "$case_dir/out" && runs 0; then pass; else fail; fi
+
+setup list-empty
+launch_args=list
+launch
+it 'list with no accounts says how to add one'
+if out_has 'tagteam add <label>'; then pass; else fail; fi
+
+setup dashdash-add
+launch_args='-- add'
+launch
+it '-- add passes add to claude'
+if runs 1 && args_are 1 add; then pass; else fail; fi
+
+setup prompt-word
+launch_args='help me'
+launch
+it 'other first words still pass through'
+if runs 1 && args_are 1 help me; then pass; else fail; fi
+launch_args=
 
 [ "$fails" = 0 ] && echo 'all passed' && exit 0
 echo "$fails failed"

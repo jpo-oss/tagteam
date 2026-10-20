@@ -68,6 +68,114 @@ watch() {
   done
 }
 
+root=$TAGTEAM_HOME
+while :; do case $root in ?*/) root=${root%/} ;; *) break ;; esac; done
+accounts="$state/accounts"
+
+die() {
+  printf 'tagteam: %s\n' "$1" >&2
+  exit "${2:-1}"
+}
+
+valid_label() {
+  case $1 in state | [!abcdefghijklmnopqrstuvwxyz0123456789]* | *[!abcdefghijklmnopqrstuvwxyz0123456789-]*) return 1 ;; esac
+  [ -n "$1" ] && [ "${#1}" -le 32 ]
+}
+
+check_label() {
+  valid_label "$1" || die 'labels are lowercase letters, digits and dashes, up to 32 characters, and not "state"' 2
+}
+
+# Records are the plugin's JSON.stringify(account, null, 2): one "key": value per line.
+field() {
+  sed -n -e 's/,$//' -e "s/^ *\"$2\": \"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$1" | head -n 1
+}
+
+active_label() {
+  head -n 1 "$state/active" 2>/dev/null
+}
+
+# Mirrors assertUnderRoot in the plugin.
+under_root() {
+  case $1 in "$root"/?*) ;; *) return 1 ;; esac
+  case $1/ in */../* | */./* | "$root/state/"*) return 1 ;; esac
+}
+
+cmd_add() {
+  check_label "$1"
+  dir="$root/$1"
+  if [ -e "$dir" ] || [ -L "$dir" ] || [ -e "$accounts/$1.json" ]; then die "$1 already exists"; fi
+  mkdir -p "$dir" || exit 1
+  echo 'The browser signs in whichever claude.ai account it has open, so switch it first, or open the URL on another device.'
+  if ! CLAUDE_CONFIG_DIR=$dir claude auth login || ! status=$(CLAUDE_CONFIG_DIR=$dir claude auth status --text); then
+    rm -rf "$dir"
+    die "sign-in did not finish, so $1 was not added"
+  fi
+  email=$(printf '%s\n' "$status" | sed -n 's/^Email: //p' | head -n 1)
+  echo "Added $1 ($email). It's ready the next time you start tagteam."
+  [ -n "$email" ] || return 0
+  for f in "$accounts"/*.json; do
+    [ -f "$f" ] && [ "$(field "$f" email)" = "$email" ] || continue
+    other=${f##*/}
+    echo "Warning: $email is already the account ${other%.json}. tagteam won't add it twice."
+  done
+}
+
+cmd_remove() {
+  check_label "$1"
+  rec="$accounts/$1.json"
+  [ -f "$rec" ] || die "no account named $1"
+  [ "$(active_label)" = "$1" ] && die "$1 is the active account. Switch to another first."
+  dir=$(field "$rec" dir)
+  under_root "$dir" || die "refusing to touch $dir: not an account folder inside $root"
+  printf 'Remove %s (%s)? [y/N] ' "$1" "$(field "$rec" email)"
+  read -r answer
+  case $answer in y | Y | yes | Yes | YES) ;; *) echo 'Cancelled.'; exit 1 ;; esac
+  CLAUDE_CONFIG_DIR=$dir claude auth logout >/dev/null ||
+    echo "Sign-out failed. Sign out of that login at claude.ai if needed." >&2
+  rm -rf "$dir" || die "could not delete $dir"
+  rm -f "$rec"
+  echo "Removed $1."
+}
+
+cmd_list() {
+  active=$(active_label)
+  for f in "$accounts"/*.json; do
+    [ -f "$f" ] || continue
+    l=${f##*/}
+    printf '%s|%s|%s|%s\n' "$(field "$f" order)" "${l%.json}" "$(field "$f" excluded)" "$(field "$f" email)"
+  done | sort -t '|' -k1,1n -k2,2 | {
+    any=
+    while IFS='|' read -r _ l excluded email; do
+      any=1
+      mark=' '
+      [ "$l" = "$active" ] && mark='*'
+      note=
+      [ "$excluded" = true ] && note=' (excluded)'
+      echo "$mark $l  $email$note"
+    done
+    if [ -n "$any" ]; then
+      echo 'Usage and reset times: /tagteam status inside Claude.'
+    else
+      echo 'No accounts yet. Add one with: tagteam add <label>'
+    fi
+  }
+}
+
+# Only these first words are tagteam's; "tagteam -- add" sends add to claude.
+case ${1-} in
+  add | remove)
+    [ $# -eq 2 ] || die "usage: tagteam $1 <label>" 2
+    "cmd_$1" "$2"
+    exit ;;
+  list)
+    [ $# -eq 1 ] || die 'usage: tagteam list' 2
+    cmd_list
+    exit ;;
+  --)
+    case ${2-} in add | remove | list) shift ;; esac ;;
+esac
+
 mkdir -p "$state" || exit 1
 dir=$(head -n 1 "$state/active-dir" 2>/dev/null)
 session=

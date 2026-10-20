@@ -3,6 +3,25 @@
 # "exit <code>", "switch" (write $FAKE_DIR/switch as the switch file, exit 0),
 # "hang" (write it, exit on SIGTERM) or "stubborn" (write it, ignore SIGTERM).
 # No mode file means exit 0. Args go to $FAKE_DIR/args-<n>, one per line.
+# "auth" calls go to $FAKE_DIR/auth instead. Login signs in $FAKE_DIR/login's
+# email (a@example.com by default), or fails when it says "fail".
+if [ "${1-}" = auth ]; then
+  printf '%s %s\n' "$2" "$CLAUDE_CONFIG_DIR" >> "$FAKE_DIR/auth"
+  json="$CLAUDE_CONFIG_DIR/.claude.json"
+  case $2 in
+    login)
+      email=$(cat "$FAKE_DIR/login" 2>/dev/null || echo a@example.com)
+      [ "$email" = fail ] && exit 1
+      printf '{"oauthAccount":{"accountUuid":"u-%s","emailAddress":"%s"}}\n' "$email" "$email" > "$json" ;;
+    status)
+      email=$(sed -n 's/.*"emailAddress":"\([^"]*\)".*/\1/p' "$json" 2>/dev/null)
+      [ -n "$email" ] || exit 1
+      printf 'Login method: Claude Max account\nEmail: %s\n' "$email" ;;
+    logout)
+      rm -f "$json" ;;
+  esac
+  exit 0
+fi
 n=$(($(wc -l < "$FAKE_DIR/log" 2>/dev/null || echo 0) + 1))
 run_file=$(tr '\n' ' ' < "$TAGTEAM_HOME/state/run-$TAGTEAM_RUN" 2>/dev/null)
 printf 'run=%s cfg=%s t=%s runfile=%s\n' "$n" "${CLAUDE_CONFIG_DIR-UNSET}" "$(date +%s)" "$run_file" >> "$FAKE_DIR/log"
