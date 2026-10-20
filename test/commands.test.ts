@@ -187,14 +187,14 @@ test('an edit redraws the status line from the last reading', async ($, on) => {
   await saveAccount(io, acct('main', 'home'))
   await saveUsage(io, {
     accountUuid: 'home', tokensByDay: {}, earlyResets: [],
-    windows: { five_hour: { kind: 'five_hour', percentUsed: 42, resetsAt: new Date(Date.now() + 3600_000).toISOString(), readAt: 1 } },
+    windows: { five_hour: { kind: 'five_hour', percentUsed: 82, resetsAt: new Date(Date.now() + 3600_000).toISOString(), readAt: 1 } },
   })
   routeTo(on, io)
   const status: string[] = []
   on('ui.status', (_, e) => (status.push(String(e.text)), { value: undefined }))
   const r = await $.command.run({ command: 'tagteam', args: 'edit main order=2' } as never)
   expect(r.text).toBe('Updated main.')
-  expect(status).toEqual(['main, 5h 42%'])
+  expect(status).toEqual(['main at 82% of its 5-hour limit'])
 })
 
 const spy = (io: Awaited<ReturnType<typeof setup>>) => {

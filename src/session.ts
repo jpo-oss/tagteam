@@ -1,9 +1,9 @@
 import type { Io } from './io'
 import { listAccounts, loadUsage, saveUsage } from './store'
-import type { Account, Reading, Tokens } from './types'
+import type { Account, Reading, Settings, Tokens } from './types'
 import { addTokens, applyReadings, effectivePercent, windowName } from './usage'
 
-export type Ui = { toast(text: string): void; status(text: string): void }
+export type Ui = { toast(text: string): void; status(text: string | undefined): void }
 
 export const configFile = async (io: Io): Promise<string> => {
   const dir = await io.env('CLAUDE_CONFIG_DIR')
@@ -65,30 +65,34 @@ export const whenAt = (ms: number, now: number): string => {
   return s.startsWith('in ') || s === 'now' ? s : `at ${s}`
 }
 
-const showStatus = async (io: Io, ui: Pick<Ui, 'status'>, uuid: string, windows: Record<string, Reading>, now: number) => {
+const SHOW_AT = 70
+
+const showStatus = async (io: Io, ui: Pick<Ui, 'status'>, settings: Settings, uuid: string, windows: Record<string, Reading>, now: number) => {
   const top = Object.values(windows)
     .map((w) => ({ kind: w.kind, pct: effectivePercent({ ...w, readAt: now }, now) }))
     .sort((a, b) => b.pct - a.pct)[0]
-  if (!top) return
-  const label = labelFor(await listAccounts(io), uuid) ?? 'unmanaged'
-  ui.status(`${label}, ${windowName(top.kind)} ${Math.round(top.pct)}%`)
+  if (!top || top.pct < SHOW_AT) return ui.status(undefined)
+  const label = labelFor(await listAccounts(io), uuid) ?? 'this account'
+  const pct = Math.round(top.pct)
+  const soon = top.pct < settings.threshold ? '' : settings.autoSwitch ? ', switching soon' : ', will ask to switch'
+  ui.status(`${label} at ${pct}% of its ${windowName(top.kind)} limit${soon}`)
 }
 
 // Redraws the status line from the last saved reading, e.g. after an account is added or renamed.
-export const refreshStatus = async (io: Io, ui: Pick<Ui, 'status'>): Promise<void> => {
+export const refreshStatus = async (io: Io, ui: Pick<Ui, 'status'>, settings: Settings): Promise<void> => {
   const uuid = await currentAccountUuid(io)
-  if (uuid) await showStatus(io, ui, uuid, (await loadUsage(io, uuid)).windows, await io.now())
+  if (uuid) await showStatus(io, ui, settings, uuid, (await loadUsage(io, uuid)).windows, await io.now())
 }
 
-export const recordMeasure = async (io: Io, ui: Ui, readings: readonly Reading[]): Promise<void> => {
+export const recordMeasure = async (io: Io, ui: Ui, settings: Settings, readings: readonly Reading[]): Promise<void> => {
   const uuid = await currentAccountUuid(io)
   if (!uuid || readings.length === 0) return
   const now = await io.now()
   const { next, earlyResets } = applyReadings(await loadUsage(io, uuid), readings, now)
   await saveUsage(io, next)
   try {
-    for (const kind of earlyResets) ui.toast(`Your ${windowName(kind)} usage window reset early`)
-    await showStatus(io, ui, uuid, next.windows, now)
+    for (const kind of earlyResets) ui.toast(`Your ${windowName(kind)} limit reset early`)
+    await showStatus(io, ui, settings, uuid, next.windows, now)
   } catch {
     // display only: the reading is already saved
   }
