@@ -421,7 +421,7 @@ test('hooks: a reading over the threshold with auto on closes the session after 
   expect(commands).toEqual(['exit'])
 })
 
-test('session.start keeps the run id and unsets it for anything the session starts', async ($, on) => {
+test('session.start keeps the run id in session state, unsets it for anything the session starts, and a later start still has it', async ($, on) => {
   const env: Record<string, string> = { HOME: '/h', TAGTEAM_HOME: '/t', CLAUDE_CONFIG_DIR: '/t/a', TAGTEAM_RUN: 'r1' }
   const io = memoryIo(env)
   await saveAccount(io, acct('a', 0))
@@ -442,6 +442,7 @@ test('session.start keeps the run id and unsets it for anything the session star
   on('clock.after', () => ({ value: undefined }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect('TAGTEAM_RUN' in env).toBe(false)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const r = await $.command.run({ command: 'tagteam', args: 'switch b' } as never)
   expect(r.text).toContain('Switching to b')
   expect((await request(io))?.target_label).toBe('b')

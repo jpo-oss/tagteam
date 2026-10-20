@@ -17,18 +17,21 @@ export type Io = {
 // $.env.get needs a literal name, so ioFrom lists every variable the mod reads.
 export type EnvName = 'HOME' | 'TAGTEAM_HOME' | 'CLAUDE_CONFIG_DIR' | 'TAGTEAM_RUN' | 'PATH'
 
-type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock'>
+type Dollar = Pick<EngineInterface, 'fs' | 'process' | 'env' | 'clock' | 'state'>
 
-// Reads the launcher's run id and unsets it, so a claude started from this session's Bash tool doesn't claim it too.
-export async function takeRun($: Pick<EngineInterface, 'env'>): Promise<string | undefined> {
+// Session state outlives a plugin reload; a module variable would not.
+const RUN = { plugin: 'tagteam', key: 'run' } as const
+
+// Keeps the launcher's run id and unsets it, so a claude started from this session's Bash tool doesn't claim it too.
+export async function takeRun($: Pick<EngineInterface, 'env' | 'state'>): Promise<void> {
   const run = await $.env.get('TAGTEAM_RUN')
-  if (run) await $.env.set('TAGTEAM_RUN', undefined)
-  return run
+  if (!run) return
+  await $.state.set(RUN, run)
+  await $.env.set('TAGTEAM_RUN', undefined)
 }
 
 // A function declaration: the mod loader follows $ into one, not into an arrow.
-// `run` is the id takeRun kept; until session.start has taken it, the variable is still set.
-export function ioFrom($: Dollar, run?: string): Io {
+export function ioFrom($: Dollar): Io {
   return {
     read: async (p) => ((await $.fs.exists(p)) ? $.fs.read(p) : undefined),
     write: (p, t) => $.fs.write(p, t),
@@ -39,7 +42,7 @@ export function ioFrom($: Dollar, run?: string): Io {
     env: async (n) => {
       if (n === 'HOME') return $.env.get('HOME')
       if (n === 'TAGTEAM_HOME') return $.env.get('TAGTEAM_HOME')
-      if (n === 'TAGTEAM_RUN') return run ?? $.env.get('TAGTEAM_RUN')
+      if (n === 'TAGTEAM_RUN') return (await $.state.get(RUN)).value ?? $.env.get('TAGTEAM_RUN')
       if (n === 'PATH') return $.env.get('PATH')
       return $.env.get('CLAUDE_CONFIG_DIR')
     },
