@@ -33,18 +33,37 @@ value() {
   sed -n "s/^$1=//p" "$switch_file" 2>/dev/null | head -n 1
 }
 
+# A real claude shows as claude (native) or node .../claude; the test stub as sh .../claude.
+is_claude() {
+  ps -o args= -p "$1" 2>/dev/null | awk '{
+    for (i = 1; i <= 2 && i <= NF; i++) { n = $i; sub(".*/", "", n); if (n == "claude") found = 1 }
+  } END { exit !found }'
+}
+
+nap=
+pause() {
+  sleep "$1" &
+  nap=$!
+  wait "$nap"
+  nap=
+}
+
 # Only matters when claude doesn't exit by itself after the plugin asks it to,
 # for example while it sits on the usage limit menu.
 watch() {
   trap - EXIT
   trap '' INT
-  while [ ! -f "$switch_file" ]; do sleep 1; done
+  trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 0' TERM
+  while [ ! -f "$switch_file" ]; do pause 1; done
   stall=$(value stall)
   case $stall in '' | *[!0-9]*) stall=${TAGTEAM_STALL:-30} ;; esac
-  sleep "$stall"
-  self=$(exec sh -c 'echo "$PPID"')
+  pause "$stall"
   for pid in $(pgrep -P "$$"); do
-    [ "$pid" = "$self" ] || kill -TERM "$pid" 2>/dev/null
+    is_claude "$pid" || continue
+    kill -TERM "$pid" 2>/dev/null
+    i=0
+    while [ "$i" -lt 10 ] && kill -0 "$pid" 2>/dev/null; do pause 1; i=$((i + 1)); done
+    if kill -0 "$pid" 2>/dev/null && is_claude "$pid"; then kill -KILL "$pid" 2>/dev/null; fi
   done
 }
 
@@ -72,6 +91,11 @@ while :; do
   session=$(value session)
   [ -n "$session" ] || { rm -f "$switch_file"; exit "$code"; }
   dir=$(value target_dir)
+  if [ -z "$dir" ]; then
+    printf 'tagteam: the switch request names no account folder, so claude was not restarted\n' >&2
+    rm -f "$switch_file"
+    exit 1
+  fi
   handover=$(value handover)
   resume_at=$(value resume_at)
   label=$(value target_label)
@@ -79,12 +103,12 @@ while :; do
   case $resume_at in '' | *[!0-9]*) ;; *)
     now=$(date +%s)
     if [ "$resume_at" -gt "$now" ]; then
-      echo "tagteam: every account is at its limit, resuming at $(date -r "$resume_at" 2>/dev/null || date -d "@$resume_at"). Ctrl-C to quit." >&2
-      trap 'exit 130' INT
-      sleep $((resume_at - now)) &
-      wait "$!"
+      printf 'tagteam: every account is at its limit, resuming at %s. Ctrl-C to quit.\n' \
+        "$(date -r "$resume_at" 2>/dev/null || date -d "@$resume_at")" >&2
+      trap '[ -n "$nap" ] && kill "$nap" 2>/dev/null; exit 130' INT
+      pause $((resume_at - now))
       trap : INT
     fi ;;
   esac
-  echo "tagteam: resuming on ${label:-$dir}" >&2
+  printf 'tagteam: resuming on %s\n' "${label:-$dir}" >&2
 done

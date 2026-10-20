@@ -246,10 +246,14 @@ const withPath = async (path: string) => {
 }
 
 test('install copies the launcher to ~/.local/bin as 755 and warns when it is not on PATH', async () => {
-  const { io, calls } = await withPath('/usr/bin')
+  const { io: base } = await withPath('/usr/bin')
+  const argvs: string[][] = []
+  const io = { ...base, run: async (a: string[], o?: never) => (argvs.push(a), base.run(a, o)) }
   const text = await runCommand(io, 'install', deps())
   expect(await io.read('/h/.local/bin/tagteam')).toBe('#!/bin/sh\nv1\n')
-  expect(calls).toContain('chmod')
+  const chmod = argvs.find((a) => a[0] === 'chmod')
+  expect(chmod?.[1]).toBe('755')
+  expect(argvs.find((a) => a[0] === 'mv')).toEqual(['mv', chmod?.[2], '/h/.local/bin/tagteam'])
   expect(text).toContain('/h/.local/bin')
   expect(text).toContain('PATH')
   expect((await io.list('/h/.local/bin')).filter((n) => n.includes('.tmp-'))).toEqual([])
