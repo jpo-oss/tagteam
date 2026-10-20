@@ -14,13 +14,13 @@ Use of Claude is subject to Anthropic's [Usage Policy](https://www.anthropic.com
    /plugin install tagteam --marketplace jpo-oss/tagteam
    ```
 
-2. Start a new session, since `/tagteam` only appears in sessions started after the install. Then install the launcher, which copies `tagteam` to `~/.local/bin`:
+2. Load the plugin with `/reload-plugins` (or start a new session), then install the launcher. This step is required: it copies the `tagteam` command to `~/.local/bin`.
 
    ```
    /tagteam install
    ```
 
-3. If it says `~/.local/bin` is not on your `PATH`, add this to your shell profile and open a new terminal:
+3. If it says `~/.local/bin` is not on your `PATH`, add this to your shell profile and open a new terminal. Then start sessions with `tagteam` instead of `claude`.
 
    ```sh
    export PATH="$HOME/.local/bin:$PATH"
