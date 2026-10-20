@@ -74,7 +74,28 @@ session=
 handover=
 label=
 
+relaunch=
 while :; do
+  # Session-picking flags would override the --resume below, so a relaunch drops them.
+  if [ -n "$relaunch" ]; then
+    n=$#
+    i=0
+    while [ "$i" -lt "$n" ]; do
+      a=$1
+      shift
+      i=$((i + 1))
+      case $a in
+        -c | --continue | --fork-session | --session-id=* | --resume=* | --from-pr=* | --teleport=*) ;;
+        -r | --resume | --from-pr | --teleport | --session-id)
+          # The value is optional except for --session-id: skip a following non-flag word.
+          if [ "$i" -lt "$n" ]; then
+            case $1 in -*) ;; *) shift; i=$((i + 1)) ;; esac
+          fi ;;
+        *) set -- "$@" "$a" ;;
+      esac
+    done
+    relaunch=
+  fi
   printf 'dir=%s\npid=%s\n' "$dir" "$$" > "$run_file.tmp-$$" && mv "$run_file.tmp-$$" "$run_file"
   watch &
   watcher=$!
@@ -97,6 +118,7 @@ while :; do
     printf 'tagteam: could not resume the conversation, starting a new one on %s\n' "${label:-$dir}" >&2
     session=
     handover=
+    relaunch=1
     continue
   fi
   [ -f "$switch_file" ] || exit "$code"
@@ -123,5 +145,6 @@ while :; do
     fi ;;
   esac
   if [ -n "$session" ]; then verb=resuming; else verb='starting fresh'; fi
+  relaunch=1
   printf 'tagteam: %s on %s\n' "$verb" "${label:-$dir}" >&2
 done
