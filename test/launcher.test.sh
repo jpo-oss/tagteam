@@ -156,6 +156,10 @@ launch
 it 'missing active-dir leaves CLAUDE_CONFIG_DIR unset'
 if [ "$(field 1 cfg)" = UNSET ]; then pass; else fail; fi
 
+setup header
+it 'keeps the header line the plugin uses to recognise an installed launcher'
+if sed -n 2p bin/tagteam | grep -q '^# Runs claude on the active tagteam account'; then pass; else fail; fi
+
 [ "$fails" = 0 ] && echo 'all passed' && exit 0
 echo "$fails failed"
 exit 1
