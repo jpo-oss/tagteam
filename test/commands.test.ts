@@ -171,11 +171,13 @@ test('/tagteam is registered and routed through the hook', async ($, on) => {
   const io = await setup()
   routeTo(on, io)
   let name = ''
+  let hint = ''
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  on('command.register', (_, e) => ((name = e.name), { value: { command: e.name } }))
+  on('command.register', (_, e) => ((name = e.name), (hint = e.argumentHint ?? ''), { value: { command: e.name } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   expect(name).toBe('tagteam')
+  expect(hint).toContain('add')
   const r = await $.command.run({ command: 'tagteam', args: 'status' } as never)
   expect(r.text).toContain('pane opened')
 })
