@@ -60,8 +60,10 @@ export function handover(from: string | undefined, to: string, reason: string): 
   const moved = from === to
     ? `This session was paused on ${src} because ${reason}, and resumed there once the limit reset.`
     : `This session was closed on ${src} and reopened on the ${to} account because ${reason}.`
-  return `${moved} Before anything else, check every subagent and background task that was running when it closed. ` +
-    'Resume any subagent that had not finished, with its history, and re-run any background task that died. ' +
+  return `${moved} Before anything else, check every subagent, workflow and background task that was running when it closed. ` +
+    'Resume any unfinished subagent or workflow with its history, and re-run any background task that died. ' +
+    'Commands a resumed subagent was waiting on died too: re-run them without asking. ' +
+    'If a subagent cannot continue, start it again fresh with the same instructions, without asking. ' +
     'Then carry on with the task you were on. Do not start anything that was not already in progress.'
 }
 
