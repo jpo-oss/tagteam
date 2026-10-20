@@ -1,3 +1,4 @@
+import type { On } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
@@ -35,7 +36,7 @@ test('labelFor finds the account by uuid', () => {
   expect(labelFor([a], 'zz')).toBeUndefined()
 })
 
-const statusOf = (on: Parameters<Parameters<typeof test>[1]>[1]) => {
+const statusOf = (on: On) => {
   const status: (string | undefined)[] = []
   on('ui.status', (_, e) => (status.push(e.text as string | undefined), { value: undefined }))
   return status
