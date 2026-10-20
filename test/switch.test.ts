@@ -13,7 +13,7 @@ const tick = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
 const RESET = new Date(Date.now() + 3600_000).toISOString()
 const acct = (label: string, order: number): Account =>
-  ({ label, dir: `/t/${label}`, accountUuid: `u${label}`, email: `${label}@x.io`, order, excluded: false, needsSignIn: false })
+  ({ label, dir: `/t/${label}`, accountUuid: `u${label}`, email: `${label}@example.com`, order, excluded: false, needsSignIn: false })
 
 const setup = async (opts: { run?: string; pct?: number } = {}) => {
   const env: Record<string, string> = { HOME: '/h', TAGTEAM_HOME: '/t', CLAUDE_CONFIG_DIR: '/t/a' }

@@ -20,7 +20,7 @@ const PANE = {
 } as const
 
 const acct = (label: string, uuid: string, over: Partial<Account> = {}): Account =>
-  ({ label, dir: `/t/${label}`, accountUuid: uuid, email: `${label}@x.io`, order: 0, excluded: false, needsSignIn: false, ...over })
+  ({ label, dir: `/t/${label}`, accountUuid: uuid, email: `${label}@example.com`, order: 0, excluded: false, needsSignIn: false, ...over })
 
 const seed = async () => {
   const io = memoryIo({ HOME: '/h', TAGTEAM_HOME: '/t' })
@@ -62,7 +62,7 @@ test('the pane lists every account, on every surface', async ($, on) => {
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /a.*42%/ }))?.text).toContain('active')
-    expect((await ui.find({ type: 'Text', text: /b.*excluded/ }))?.text).toContain('b@x.io')
+    expect((await ui.find({ type: 'Text', text: /b.*excluded/ }))?.text).toContain('b@example.com')
     expect(await ui.find({ type: 'Text', text: /c.*needs sign-in/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /d.*limited until/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /today 1\.2k/ })).toBeTruthy()
@@ -124,7 +124,7 @@ test('the empty state fits a narrow pane', async ($, on) => {
 test('the active account is marked and the empty state is told', async ($, on) => {
   await setup($, on, await seed())
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /a.*42%/ }))?.text).toMatch(/^● a {2}a@x\.io {2}active {2}5h 42%/)
+  expect((await ui.find({ type: 'Text', text: /a.*42%/ }))?.text).toMatch(/^● a {2}a@example\.com {2}active {2}5h 42%/)
   expect((await ui.find({ type: 'Text', text: /b.*excluded/ }))?.text).toMatch(/^ {2}b/)
   await ui.unmount()
 })

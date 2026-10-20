@@ -6,7 +6,7 @@ const now = Date.parse('2026-10-20T12:00:00Z')
 const H = 3600_000
 
 const acct = (label: string, over: Partial<Account> = {}): Account => ({
-  label, dir: `/x/${label}`, accountUuid: `u-${label}`, email: `${label}@x.io`,
+  label, dir: `/x/${label}`, accountUuid: `u-${label}`, email: `${label}@example.com`,
   order: 0, excluded: false, needsSignIn: false, ...over,
 })
 

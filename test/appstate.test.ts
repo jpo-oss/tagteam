@@ -5,7 +5,7 @@ type Out = { projects: Record<string, Record<string, unknown>>; oauthAccount?: u
 
 test('seed drops login-bound keys and keeps the rest', async () => {
   const home = {
-    oauthAccount: { emailAddress: 'a@x.io' }, userID: 'u', cachedGrowthBookFeatures: {},
+    oauthAccount: { emailAddress: 'a@example.com' }, userID: 'u', cachedGrowthBookFeatures: {},
     hasCompletedOnboarding: true, theme: 'dark', mcpServers: { a: {} }, projects: { '/p': {} },
   }
   const seed = seedAppState(home)
