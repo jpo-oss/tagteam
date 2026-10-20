@@ -51,7 +51,7 @@ test('session.measure stores the reading and shows status', async ($, on) => {
 test('status uses the account label when managed', async ($, on) => {
   const io = await setup()
   await io.write('/t/state/accounts/work.json', JSON.stringify({
-    label: 'work', dir: '/d', accountUuid: 'u1', email: 'a@b.c', order: 1, excluded: false, needsSignIn: false,
+    label: 'work', dir: '/d', accountUuid: 'u1', email: 'a@example.com', order: 1, excluded: false, needsSignIn: false,
   }))
   routeTo(on, io)
   const status: string[] = []

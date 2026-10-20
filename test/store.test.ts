@@ -9,7 +9,7 @@ import type { Account } from '../src/types'
 import { memoryIo } from './support/memory'
 
 const acct = (label: string, order: number): Account => ({
-  label, dir: `/d/${label}`, accountUuid: `u-${label}`, email: `${label}@x.io`,
+  label, dir: `/d/${label}`, accountUuid: `u-${label}`, email: `${label}@example.com`,
   order, excluded: false, needsSignIn: false,
 })
 
