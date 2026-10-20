@@ -30,6 +30,11 @@ fail() {
 }
 
 line() { sed -n "${1}p" "$case_dir/fake/log"; }
+args_are() {
+  n=$1
+  shift
+  printf '%s\n' "$@" | cmp -s - "$case_dir/fake/args-$n"
+}
 field() { line "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 runs() { [ "$(wc -l < "$case_dir/fake/log")" -eq "$1" ]; }
 no_leftovers() {
@@ -47,7 +52,7 @@ launch; code=$?
 it 'exits with claude code when no switch is requested'
 if [ "$code" = 3 ] && runs 1; then pass; else fail; fi
 it 'first run uses active-dir and original args'
-if [ "$(field 1 cfg)" = "$case_dir/A" ] && line 1 | grep -q 'args=--model opus$'; then pass; else fail; fi
+if [ "$(field 1 cfg)" = "$case_dir/A" ] && args_are 1 --model opus; then pass; else fail; fi
 it 'run file names the dir while claude runs'
 if line 1 | grep -q "runfile=dir=$case_dir/A pid="; then pass; else fail; fi
 it 'run file removed after exit'
@@ -56,12 +61,16 @@ if no_leftovers; then pass; else fail; fi
 setup switch
 echo "$case_dir/A" > "$case_dir/home/state/active-dir"
 echo switch > "$case_dir/fake/mode-1"
-printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nreason=limit\nhandover=Continue where you left off\nstall=30\n' "$case_dir/B" > "$case_dir/fake/switch"
+# shellcheck disable=SC2016 # literal on purpose: the launcher must not expand it
+handover='Don'"'"'t stop: "go" $(touch pwned) `touch pwned` * ok'
+printf 'session=s1\ntarget_label=b\ntarget_dir=%s\nresume_at=\nreason=limit\nhandover=%s\nstall=30\n' "$case_dir/B" "$handover" > "$case_dir/fake/switch"
 launch; code=$?
 it 'switch file consumed and second exit code returned'
 if [ "$code" = 0 ] && runs 2 && no_leftovers; then pass; else fail; fi
 it 'relaunches on target dir with resume and handover'
-if [ "$(field 2 cfg)" = "$case_dir/B" ] && line 2 | grep -q 'args=--resume s1 Continue where you left off --model opus$'; then pass; else fail; fi
+if [ "$(field 2 cfg)" = "$case_dir/B" ] && args_are 2 --resume s1 "$handover" --model opus; then pass; else fail; fi
+it 'handover with quotes, globs and substitutions arrives as one unchanged argument'
+if [ "$(sed -n 3p "$case_dir/fake/args-2")" = "$handover" ] && [ ! -e pwned ] && [ ! -e "$case_dir/pwned" ]; then pass; else fail; fi
 it 'relaunch rewrites the run file'
 if line 2 | grep -q "runfile=dir=$case_dir/B pid="; then pass; else fail; fi
 
@@ -79,6 +88,21 @@ printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=1\n' "$case_di
 launch TAGTEAM_STALL=60
 it 'stall in the switch file wins over TAGTEAM_STALL'
 if [ -s "$case_dir/fake/signals" ] && [ "$(elapsed)" -le 3 ]; then pass; else fail; fi
+
+setup stubborn
+echo stubborn > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=%s\nresume_at=\nhandover=go\nstall=1\n' "$case_dir/B" > "$case_dir/fake/switch"
+launch
+it 'claude that ignores SIGTERM gets SIGKILL 10s later and the relaunch follows'
+if grep -q term "$case_dir/fake/signals" && ! grep -q survived "$case_dir/fake/signals" &&
+  [ "$(elapsed)" -ge 11 ] && [ "$(elapsed)" -le 14 ] && [ "$(field 2 cfg)" = "$case_dir/B" ]; then pass; else fail; fi
+
+setup no-target
+echo switch > "$case_dir/fake/mode-1"
+printf 'session=s1\ntarget_dir=\nresume_at=\nhandover=go\n' > "$case_dir/fake/switch"
+launch; code=$?
+it 'a switch with no target dir stops with an error instead of relaunching'
+if [ "$code" != 0 ] && runs 1 && grep -q 'tagteam:' "$case_dir/out" && no_leftovers; then pass; else fail; fi
 
 setup resume-at
 echo switch > "$case_dir/fake/mode-1"
