@@ -101,6 +101,26 @@ test('no line is wider than the pane', async ($, on) => {
   await ui.unmount()
 })
 
+test('the error line fits a narrow pane', async ($, on) => {
+  const io = await seed()
+  await io.write('/t/state/usage/ua.json', '{nope')
+  await setup($, on, io)
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 20 }, surface: 'terminal' })
+  const texts = await ui.findAll({ type: 'Text' })
+  expect(texts.map((t) => t.text).join(' ')).toContain('cannot read')
+  for (const t of texts) expect((t.text ?? '').length).toBeLessThanOrEqual(20)
+  await ui.unmount()
+})
+
+test('the empty state fits a narrow pane', async ($, on) => {
+  await setup($, on, memoryIo({ HOME: '/h', TAGTEAM_HOME: '/t' }))
+  const ui = await $.ui.mount({ ...PANE, props: { ...PANE.props, bodyColumns: 20 }, surface: 'terminal' })
+  const texts = await ui.findAll({ type: 'Text' })
+  expect(texts.length).toBeGreaterThan(1)
+  for (const t of texts) expect((t.text ?? '').length).toBeLessThanOrEqual(20)
+  await ui.unmount()
+})
+
 test('the active account is marked and the empty state is told', async ($, on) => {
   await setup($, on, await seed())
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })

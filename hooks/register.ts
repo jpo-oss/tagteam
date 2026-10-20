@@ -45,7 +45,7 @@ export const register: Register = (on, options) => {
       return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns)
     } catch (err) {
       $.ui.log(`tagteam: dashboard failed: ${message(err)}`, { to: 'debug' })
-      return drawError($.ui.resolve(e), message(err))
+      return drawError($.ui.resolve(e), message(err), e.props.bodyColumns)
     }
   })
 

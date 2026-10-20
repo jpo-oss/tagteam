@@ -47,11 +47,11 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
 type Parts = Pick<ElementTable, 'Box' | 'Text'>
 
 // Joins segments with " · " onto lines no wider than the pane; a lone segment that is still too wide is cut.
-export function wrapLine(segments: string[], columns: number, indent = '  '): string[] {
+export function wrapLine(segments: string[], columns: number, indent = '  ', sep = ' · '): string[] {
   const lines: string[] = []
   let cur = ''
   for (const seg of segments) {
-    const next = cur ? `${cur} · ${seg}` : seg
+    const next = cur ? `${cur}${sep}${seg}` : seg
     if (cur && next.length > columns) {
       lines.push(cur)
       cur = indent + seg
@@ -61,18 +61,20 @@ export function wrapLine(segments: string[], columns: number, indent = '  '): st
   return lines.map((l) => (l.length > columns ? `${l.slice(0, Math.max(1, columns - 1))}…` : l))
 }
 
+const plain = (text: string, columns: number): string[] => wrapLine(text.split(/\s+/), columns, '', ' ')
+
 // A function declaration, like the other files that take engine parts.
 export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number) {
-  if (!rows.length) return <Text dimColor>{'No accounts yet. Run /tagteam add <label>.'}</Text>
+  if (!rows.length) return <Box flexDirection="column">{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
   return (
     <Box flexDirection="column" width={columns}>
       {rows.map((r) => (
         <Box key={r.label} flexDirection="column" marginBottom={1}>
-          {wrapLine([`${r.active ? '●' : ' '} ${r.label}`, r.email, r.state, ...r.windows], columns).map((l) => (
-            <Text bold={r.active}>{l}</Text>
+          {wrapLine([`${r.active ? '●' : ' '} ${r.label}`, r.email, r.state, ...r.windows], columns).map((l, i) => (
+            <Text key={String(i)} bold={r.active}>{l}</Text>
           ))}
-          {wrapLine([r.tokens, ...(r.early ? [r.early] : [])], columns).map((l) => (
-            <Text dimColor>{`  ${l.trimStart()}`.slice(0, columns)}</Text>
+          {wrapLine([r.tokens, ...(r.early ? [r.early] : [])], columns).map((l, i) => (
+            <Text key={String(i)} dimColor>{`  ${l.trimStart()}`.slice(0, columns)}</Text>
           ))}
         </Box>
       ))}
@@ -80,6 +82,6 @@ export function drawPane({ Box, Text }: Parts, rows: Row[], columns: number) {
   )
 }
 
-export function drawError({ Text }: Parts, msg: string) {
-  return <Text>{`tagteam: cannot read accounts: ${msg}`}</Text>
+export function drawError({ Box, Text }: Parts, msg: string, columns: number) {
+  return <Box flexDirection="column">{plain(`tagteam: cannot read accounts: ${msg}`, columns).map((l, i) => <Text key={String(i)}>{l}</Text>)}</Box>
 }
