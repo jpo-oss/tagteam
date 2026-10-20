@@ -22,11 +22,11 @@ export type SwitchUi = {
 // A decision held in memory until no turn is running, so the launcher's stall timer never cuts a turn short.
 export type Planned = { from?: string; target: Account; reason: string; resumeAt?: number; toast?: string; key: string }
 export type SwitchState = {
-  inTurn: boolean; planned?: Planned; pendingExit: boolean; exitScheduled: boolean; told: Set<string>
+  inTurn: boolean; planned?: Planned; committing: boolean; pendingExit: boolean; exitScheduled: boolean; told: Set<string>
 }
 export type SwitchCtx = { io: Io; ui: SwitchUi; state: SwitchState; settings: Settings }
 
-export const newState = (): SwitchState => ({ inTurn: false, pendingExit: false, exitScheduled: false, told: new Set() })
+export const newState = (): SwitchState => ({ inTurn: false, committing: false, pendingExit: false, exitScheduled: false, told: new Set() })
 
 type Dollar = Pick<EngineInterface, 'ui' | 'session' | 'clock' | 'command'>
 
@@ -109,7 +109,7 @@ const copyTrust = async (io: Io, cwd: string, dir: string): Promise<void> => {
 }
 
 export async function requestSwitch(ctx: SwitchCtx, plan: Planned): Promise<void> {
-  if (ctx.state.pendingExit) return
+  if (ctx.state.pendingExit || ctx.state.committing) return
   ctx.state.planned = plan
   if (!ctx.state.inTurn) await commit(ctx)
 }
@@ -118,7 +118,9 @@ export async function requestSwitch(ctx: SwitchCtx, plan: Planned): Promise<void
 export async function commit(ctx: SwitchCtx): Promise<void> {
   const { io, ui, state, settings } = ctx
   const p = state.planned
-  if (!p || state.pendingExit) return
+  if (!p || state.pendingExit || state.committing) return
+  // Set before the first await: a turn ending or a /tagteam switch mid-commit must not start a second one.
+  state.committing = true
   try {
     const run = await io.env('TAGTEAM_RUN')
     if (!run) throw new Error('this session was not started by the tagteam launcher')
@@ -135,6 +137,8 @@ export async function commit(ctx: SwitchCtx): Promise<void> {
     state.planned = undefined
     if (once(state, `fail:${p.key}`)) ui.toast(`Couldn't switch accounts: ${shortError(err)}`)
     throw err
+  } finally {
+    state.committing = false
   }
   state.pendingExit = true
   if (p.toast) ui.toast(p.toast)
@@ -173,7 +177,7 @@ async function decide(ctx: SwitchCtx, uuid: string, w: Window, question: string,
   return answer === 'Yes'
 }
 
-const busy = (s: SwitchState): boolean => s.pendingExit || s.planned !== undefined
+const busy = (s: SwitchState): boolean => s.pendingExit || s.committing || s.planned !== undefined
 
 export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   const { io, ui, state, settings } = ctx
@@ -240,7 +244,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
 export async function manualSwitch(ctx: SwitchCtx, label: string): Promise<string> {
   const { io, state } = ctx
   if (!(await io.env('TAGTEAM_RUN'))) return 'This session was not started with the tagteam launcher, so it cannot switch. Restart it with tagteam.'
-  if (state.pendingExit) return 'A switch is already under way.'
+  if (state.pendingExit || state.committing) return 'A switch is already in progress.'
   const accounts = await listAccounts(io)
   const target = accounts.find((a) => a.label === label)
   if (!target) return `No account named ${label}.`
