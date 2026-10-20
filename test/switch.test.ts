@@ -116,6 +116,28 @@ test('the exit timer stands down if a new turn started, and the next turn end sc
   expect(calls.ready?.()).toBe(true)
 })
 
+test('one commit at a time: a turn end or /tagteam switch mid-commit changes nothing', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('c', 2))
+  await setPct(io, 'uc', 50)
+  let release!: (cwd: string) => void
+  const base = fakeUi()
+  const calls = base.calls
+  const c = ctx(io, { ...base.ui, cwd: () => new Promise<string>((r) => (release = r)) })
+  const first = evaluate(c, Date.now())
+  await tick(20)
+  expect(c.state.committing).toBe(true)
+  await turnEnded(c)
+  expect(await manualSwitch(c, 'c')).toBe('A switch is already in progress.')
+  release('/w')
+  await first
+  expect((await request(io))?.target_label).toBe('b')
+  expect(await readActive(io)).toBe('b')
+  expect(calls.toasts).toEqual(['Switched from a (95% 5h) to b (8%)'])
+  expect(c.state.committing).toBe(false)
+  expect(c.state.pendingExit).toBe(true)
+})
+
 test('a failed switch tells the user once and leaves no request', async () => {
   const base = await setup()
   const io: Io = { ...base, write: async (p, t) => {
