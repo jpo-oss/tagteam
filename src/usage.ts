@@ -7,14 +7,21 @@ export const emptyUsage = (accountUuid: string): Usage => ({
   earlyResets: [],
 })
 
-export const effectivePercent = (w: Window, now: number): number =>
-  w.resetsAt && Date.parse(w.resetsAt) <= now ? 0 : w.percentUsed
+const resetTime = (iso?: string): number | undefined => {
+  const t = iso ? Date.parse(iso) : NaN
+  return Number.isNaN(t) ? undefined : t
+}
+
+export const effectivePercent = (w: Window, now: number): number => {
+  const at = resetTime(w.resetsAt)
+  return at !== undefined && at <= now ? 0 : w.percentUsed
+}
 
 const isEarly = (prev: Window | undefined, r: Reading, now: number): boolean => {
-  if (!prev?.resetsAt) return false
-  const was = Date.parse(prev.resetsAt)
-  if (was <= now) return false
-  return r.percentUsed < prev.percentUsed || (r.resetsAt !== undefined && Date.parse(r.resetsAt) < was)
+  const was = resetTime(prev?.resetsAt)
+  if (!prev || was === undefined || was <= now) return false
+  const next = resetTime(r.resetsAt)
+  return r.percentUsed < prev.percentUsed || (next !== undefined && next < was)
 }
 
 export function applyReadings(

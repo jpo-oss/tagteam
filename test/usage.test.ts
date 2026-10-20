@@ -41,9 +41,21 @@ test('effectivePercent is 0 once the window has reset', async () => {
   expect(effectivePercent(w, Date.parse('2026-10-20T08:00:00Z'))).toBe(100)
 })
 
-test('addTokens sums per day', async () => {
+test('addTokens sums per day and leaves other days alone', async () => {
   const t = { input: 1, output: 2, cacheRead: 3, cacheWrite: 4 }
-  const u = addTokens(addTokens(emptyUsage('u'), t, '2026-10-20'), t, '2026-10-20')
+  const other = { input: 9, output: 9, cacheRead: 9, cacheWrite: 9 }
+  const seed = { ...emptyUsage('u'), tokensByDay: { '2026-10-19': other } }
+  const u = addTokens(addTokens(seed, t, '2026-10-20'), t, '2026-10-20')
   expect(u.tokensByDay['2026-10-20']).toEqual({ input: 2, output: 4, cacheRead: 6, cacheWrite: 8 })
-  expect(Object.keys(u.tokensByDay)).toEqual(['2026-10-20'])
+  expect(u.tokensByDay['2026-10-19']).toEqual(other)
+})
+
+test('an unparseable resetsAt never counts as an early reset', async () => {
+  const prev = { ...emptyUsage('u'), windows: { five_hour: { ...win(80, 'garbage'), kind: 'five_hour' } } }
+  const r = applyReadings(prev, [{ kind: 'five_hour', percentUsed: 5, resetsAt: '2026-10-20T13:00:00Z' }], now)
+  expect(r.earlyResets).toEqual([])
+})
+
+test('effectivePercent ignores an unparseable resetsAt', async () => {
+  expect(effectivePercent(win(70, 'garbage'), now)).toBe(70)
 })
