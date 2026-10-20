@@ -79,8 +79,8 @@ test('each account is a card with state, bars, reset times and tokens, on every 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await mount($, surface)
     const all = await lines(ui)
-    const a = card(all, '● a')
-    expect(a[0]).toMatch(/^╭─ ● a ─+ a@example\.com ─╮$/)
+    const a = card(all, 'a')
+    expect(a[0]).toMatch(/^╭─ a ─+ a@example\.com ─╮$/)
     expect(a[1]).toMatch(/^│ State {5}Active +│$/)
     expect(a[2]).toMatch(/^│ 5-hour {4}████░░░░░░ {2}42% {2}resets in 1h +│$/)
     expect(a[3]).toMatch(/^│ Weekly {4}████████░░ {2}80% {2}resets in 1h +│$/)
@@ -89,19 +89,39 @@ test('each account is a card with state, bars, reset times and tokens, on every 
     expect(card(all, 'b')[1]).toContain('State     Excluded')
     expect(card(all, 'c')[1]).toContain('State     Needs sign-in')
     expect(card(all, 'c')[2]).toContain('Usage     no reading yet')
-    expect(card(all, 'd')[1]).toContain('State     Limited, in 1h')
+    expect(card(all, 'd')[1]).toContain('State     Limited for 1h')
     expect(card(all, 'd')[2]).toContain('██████████ 100%')
     await ui.unmount()
   }
 })
 
-test('the active card has a marked, bold title and a colored border', async ($, on) => {
+test('only color marks the active card: its border and whole header', async ($, on) => {
   await setup($, on, await seed())
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await mount($, surface)
+    expect(await ui.find({ type: 'Text', text: /●/ })).toBeUndefined()
+    const style = (t?: Found) => ({ color: t?.props.color, dimColor: t?.props.dimColor, bold: t?.props.bold })
+    expect(style(await ui.find({ type: 'Text', text: /^a$/ }))).toEqual({ color: 'claude', dimColor: undefined, bold: undefined })
+    expect(style(await ui.find({ type: 'Text', text: /^a@example\.com$/ }))).toEqual({ color: 'claude', dimColor: undefined, bold: undefined })
+    expect(style(await ui.find({ type: 'Text', text: /^b$/ }))).toEqual({ color: undefined, dimColor: undefined, bold: undefined })
+    expect(style(await ui.find({ type: 'Text', text: /^b@example\.com$/ }))).toEqual({ color: undefined, dimColor: undefined, bold: undefined })
+    const borders = (await ui.findAll({ type: 'Text', text: /^[╭╰│]/ })).filter((t) => t.props.wrap === undefined)
+    const active = borders.filter((t) => t.props.color === 'claude').length
+    expect(active).toBe(card(await lines(ui), 'a').length)
+    for (const t of borders) expect(t.props.color === 'claude' || t.props.dimColor === true).toBe(true)
+    await ui.unmount()
+  }
+})
+
+test('a limit that ends days away says until', async ($, on) => {
+  const io = await seed()
+  const u = JSON.parse((await io.read('/t/state/usage/ud.json'))!) as Usage
+  u.windows.five_hour!.resetsAt = new Date(Date.now() + 2 * 86400_000).toISOString()
+  u.windows.seven_day!.resetsAt = new Date(Date.now() + 2 * 86400_000).toISOString()
+  await saveUsage(io, u)
+  await setup($, on, io)
   const ui = await mount($, 'terminal')
-  expect((await ui.find({ type: 'Text', text: /^● a$/ }))?.props.bold).toBe(true)
-  expect((await ui.find({ type: 'Text', text: /^b$/ }))?.props.bold).toBeFalsy()
-  expect((await ui.findAll({ type: 'Text', text: /^╭─ $/ })).map((t) => t.props.color ?? 'dim')).toEqual(['claude', 'dim', 'dim', 'dim'])
-  expect(await ui.find({ type: 'Text', text: '● b' })).toBeUndefined()
+  expect(card(await lines(ui), 'd')[1]).toMatch(/State {5}Limited until (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
   await ui.unmount()
 })
 
@@ -123,14 +143,14 @@ test('a lower threshold turns the bar red sooner', { options: { threshold: 80 } 
 
 test('narrow panes shorten the bar, then drop the email, and never overflow', async ($, on) => {
   await setup($, on, await seed())
-  const cases: [number, number, boolean][] = [[60, 10, true], [45, 5, true], [30, 3, true], [26, 3, false], [14, 3, false], [8, 3, false]]
+  const cases: [number, number, boolean][] = [[60, 10, true], [45, 5, true], [30, 3, true], [24, 3, false], [14, 3, false], [8, 3, false]]
   for (const surface of ['terminal', 'desktop'] as const) {
     for (const [columns, width, email] of cases) {
       const ui = await mount($, surface, columns)
       for (const t of await ui.findAll({ type: 'Text' })) expect(t.text.length).toBeLessThanOrEqual(columns)
       const all = await lines(ui)
       for (const l of all) expect(l.length).toBe(columns)
-      if (columns >= 26) expect((await bars(ui))[0]).toEqual([Math.round(0.42 * width), width, 'success'])
+      if (columns >= 24) expect((await bars(ui))[0]).toEqual([Math.round(0.42 * width), width, 'success'])
       expect(all.some((l) => l.includes('a@example.com'))).toBe(email)
       expect(all[0]!.startsWith('╭')).toBe(columns >= 12)
       await ui.unmount()

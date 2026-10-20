@@ -59,6 +59,12 @@ export const when = (ms: number, now: number, h24 = uses24h()): string => {
   return `${DAYS[d.getDay()]} ${time}`
 }
 
+// "in 3h 20m" stays as is; a day or date gets "at": "at Thu 8 PM".
+export const whenAt = (ms: number, now: number): string => {
+  const s = when(ms, now)
+  return s.startsWith('in ') || s === 'now' ? s : `at ${s}`
+}
+
 const showStatus = async (io: Io, ui: Pick<Ui, 'status'>, uuid: string, windows: Record<string, Reading>, now: number) => {
   const top = Object.values(windows)
     .map((w) => ({ kind: w.kind, pct: effectivePercent({ ...w, readAt: now }, now) }))

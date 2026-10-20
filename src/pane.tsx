@@ -12,6 +12,8 @@ const total = (t?: Tokens): number => (t ? t.input + t.output : 0)
 const short = (n: number): string => (n < 1000 ? String(n) : n < 1e6 ? `${(n / 1e3).toFixed(1)}k` : `${(n / 1e6).toFixed(1)}M`)
 const NAMES: Record<string, string> = { five_hour: '5-hour', seven_day: 'Weekly' }
 
+const limited = (s: string): string => (s.startsWith('in ') ? `Limited for ${s.slice(3)}` : `Limited until ${s}`)
+
 export const barColor = (pct: number, threshold: number): string => (pct >= threshold ? 'error' : pct >= 70 ? 'warning' : 'success')
 
 export async function paneRows(io: Io, now: number, threshold: number): Promise<Row[]> {
@@ -29,7 +31,7 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
     const isActive = a.label === active
     const state = a.excluded ? 'Excluded'
       : a.needsSignIn ? 'Needs sign-in'
-      : full.length ? `Limited, ${when(Math.max(...full), now)}`
+      : full.length ? limited(when(Math.max(...full), now))
       : isActive ? 'Active' : 'Available'
     const windows = ws.map((w) => {
       const reset = Date.parse(w.resetsAt ?? '')
@@ -98,15 +100,16 @@ const cardLines = (r: Row, columns: number, bar: number): Seg[][] => {
     const body = fitSegs([{ text: label.padEnd(LABEL) }, ...value], inner)
     return framed ? [edge('│ '), ...body, edge(' │')] : body
   }
-  const title: Seg = { text: r.active ? `● ${r.label}` : r.label, bold: r.active }
+  const head = (text: string): Seg => (r.active ? { text, color: 'claude' } : { text })
+  const title = head(r.label)
   let top: Seg[]
   if (!framed) top = fitSegs([title], columns)
   else {
     const withEmail = columns - 8 - title.text.length - r.email.length
     const fill = withEmail >= 3 ? withEmail : columns - 5 - title.text.length
-    const right = withEmail >= 3 ? ` ${r.email} ─╮` : '╮'
+    const right = withEmail >= 3 ? [edge(' '), head(r.email), edge(' ─╮')] : [edge('╮')]
     top = fill >= 1
-      ? [edge('╭─ '), title, edge(` ${'─'.repeat(fill)}${right}`)]
+      ? [edge('╭─ '), title, edge(` ${'─'.repeat(fill)}`), ...right]
       : [edge('╭─ '), ...fitSegs([title], columns - 6), edge(' ─╮')]
   }
   const usage = r.windows.length

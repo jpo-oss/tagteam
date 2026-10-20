@@ -2,7 +2,7 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import { withTrust } from './appstate'
 import type { Io } from './io'
 import { pickTarget } from './pick'
-import { configFile, currentAccountUuid, when } from './session'
+import { configFile, currentAccountUuid, whenAt } from './session'
 import {
   awaitDecision, claimDecision, dropDecision, listAccounts, loadUsage, pruneDecisions, readActive, readJson,
   releaseDecision, snooze, snoozed, writeActive, writeJsonAtomic, writeSwitchRequest,
@@ -213,7 +213,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   if (!settings.autoSwitch) {
     const question = resumeAt === undefined
       ? `${said}. Switch to ${to}?`
-      : `${said} and every other account is limited too. Close now and resume on ${target.label} ${when(resumeAt, now)}?`
+      : `${said} and every other account is limited too. Close now and resume on ${target.label} ${whenAt(resumeAt, now)}?`
     if (!(await decide(ctx, uuid, w, question, now)) || busy(state)) return
   }
   await requestSwitch(ctx, {
@@ -221,7 +221,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
     reason: `${current.label} reached ${pct}% of its ${name} limit`,
     toast: resumeAt === undefined
       ? `Switched from ${current.label} (${pct}% ${name}) to ${to}`
-      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} ${when(resumeAt, now)}`,
+      : `${current.label} (${pct}% ${name}) is closing and resumes on ${target.label} ${whenAt(resumeAt, now)}`,
   })
 }
 

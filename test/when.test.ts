@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { when } from '../src/session'
+import { when, whenAt } from '../src/session'
 
 // Local wall-clock times, so the assertions hold in any time zone. 2026-10-20 is a Tuesday.
 const now = new Date(2026, 9, 20, 9, 0).getTime()
@@ -32,4 +32,9 @@ test('a week or more away reads as month and day', () => {
 
 test('the default follows the system clock preference and still formats', () => {
   expect(when(at(22, 20), now)).toMatch(/^Thu (8 PM|20:00)$/)
+})
+
+test('whenAt puts at before a day, not before a countdown', () => {
+  expect(whenAt(Date.now() + 200 * MIN, Date.now())).toBe('in 3h 20m')
+  expect(whenAt(Date.now() + 2 * 24 * 60 * MIN, Date.now())).toMatch(/^at (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
 })

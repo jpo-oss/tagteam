@@ -314,15 +314,16 @@ test('a resume time on another day shows the weekday', async () => {
   await setPct(io, 'ub', 99, new Date(far + 3600_000).toISOString())
   const { ui, calls } = fakeUi()
   await evaluate(ctx(io, ui), Date.now())
-  expect(calls.toasts[0]).toMatch(/resumes on a (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
+  expect(calls.toasts[0]).toMatch(/resumes on a at (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
 })
 
 test('when every account is limited it waits for the soonest reset', async () => {
   const io = await setup()
   const later = new Date(Date.now() + 7200_000).toISOString()
   await setPct(io, 'ub', 99, later)
-  const { ui } = fakeUi()
+  const { ui, calls } = fakeUi()
   await evaluate(ctx(io, ui), Date.now())
+  expect(calls.toasts[0]).toMatch(/resumes on a in (1h|59m)$/)
   const r = await request(io)
   expect(r?.target_label).toBe('a')
   expect(r?.target_dir).toBe('/t/a')
