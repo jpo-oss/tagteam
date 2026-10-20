@@ -118,7 +118,7 @@ cmd_add() {
   email=$(printf '%s\n' "$status" | sed -n 's/^Email: //p' | head -n 1)
   if [ -n "$email" ]; then
     for f in "$accounts"/*.json; do
-      [ -f "$f" ] && [ "$(field "$f" email)" = "$email" ] || continue
+      if [ ! -f "$f" ] || [ "$(field "$f" email)" != "$email" ]; then continue; fi
       other=${f##*/}
       discard "$dir"
       die "Nothing added: that login is already ${other%.json}"
