@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/jpo-oss/tagteam/compare/v0.1.0...v0.2.0) (2026-10-20)
+
+
+### Features
+
+* manage accounts from the terminal ([#12](https://github.com/jpo-oss/tagteam/issues/12)) ([ae980f7](https://github.com/jpo-oss/tagteam/commit/ae980f7caf3df1ec6f05c8d27fd6ff8c39057ed3))
+* show accounts as cards with usage bars and readable dates ([#13](https://github.com/jpo-oss/tagteam/issues/13)) ([fb4a70a](https://github.com/jpo-oss/tagteam/commit/fb4a70a4f535dc85ab2e4d28be5bb78a9e945e01))
+* tell users when a new version is out ([#10](https://github.com/jpo-oss/tagteam/issues/10)) ([f48e68d](https://github.com/jpo-oss/tagteam/commit/f48e68d1d05e559f0489ed2205a83f9c44727544))
+
+
+### Bug Fixes
+
+* drop session flags when relaunching after a switch ([#8](https://github.com/jpo-oss/tagteam/issues/8)) ([051d147](https://github.com/jpo-oss/tagteam/commit/051d147888c17b7f0cc712e9e22d16b3342a677e))
+
 ## 0.1.0 (2026-10-20)
 
 
