@@ -1,0 +1,30 @@
+{
+  "name": "tagteam",
+  "version": "0.1.0",
+  "description": "Switch between your own Claude subscription accounts when one runs low.",
+  "author": { "name": "jpo-oss contributors" },
+  "repository": "https://github.com/jpo-oss/tagteam",
+  "license": "MIT",
+  "userConfig": {
+    "autoSwitch": {
+      "type": "boolean",
+      "title": "Switch automatically",
+      "description": "Switch to another account on your own when the current one reaches the threshold.",
+      "default": false
+    },
+    "threshold": {
+      "type": "number",
+      "title": "Switch threshold (%)",
+      "description": "Usage percentage at which tagteam moves to another account.",
+      "default": 95,
+      "min": 50,
+      "max": 100
+    },
+    "stallTimeoutSeconds": {
+      "type": "number",
+      "title": "Stall timeout (seconds)",
+      "description": "How long to wait for a stalled session before switching.",
+      "default": 30
+    }
+  }
+}

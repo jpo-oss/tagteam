@@ -1,0 +1,6 @@
+{
+  "name": "tagteam",
+  "description": "Switch between your own Claude subscription accounts.",
+  "owner": { "name": "jpo-oss contributors" },
+  "plugins": [{ "name": "tagteam", "source": "./" }]
+}
