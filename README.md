@@ -67,20 +67,20 @@ Other commands:
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
 | `/tagteam refresh` | Sends a one-line prompt from each account so the dashboard shows its current usage. New accounts get this on their own. |
-| `/tagteam remove <label>` | Signs the account out and deletes its folder. You can't remove the active account. |
+| `/tagteam remove <label>` (or `delete`) | Signs the account out and deletes its folder. You can't remove an account a running tagteam session is using. |
 
 You can also manage accounts from a terminal, outside Claude. This is the way to add one on a remote machine: it prints the sign-in link, and you can open it on any device and paste the code back.
 
 | Command | What it does |
 |---|---|
-| `tagteam add <label>` | Signs a new account in and checks its usage. Claude picks it up at the next session start. |
-| `tagteam remove <label>` | Asks first, then signs the account out and deletes its folder |
+| `tagteam add <label>` | Signs a new account in. Claude picks it up, with its usage, at the next session start. |
+| `tagteam remove <label>` (or `delete`) | Asks first, then signs the account out and deletes its folder |
 | `tagteam list` | Lists the accounts, marking the active one |
 | `tagteam refresh` | Same as `/tagteam refresh`, then lists the accounts |
 
-Only `add`, `remove`, `list` and `refresh` as the first word are tagteam's. Anything else goes to Claude, and `tagteam -- add` sends `add` to Claude as a prompt.
+Only `add`, `remove`, `delete`, `list` and `refresh` as the first word are tagteam's. Anything else goes to Claude, and `tagteam -- add` sends `add` to Claude as a prompt.
 
-If an account's login lapses, sign it in again with `/tagteam remove <label>` and then `/tagteam add <label>`. Switch away from it first if it's the active one.
+If an account's login lapses, sign it in again with `/tagteam remove <label>` and then `/tagteam add <label>`. Switch away from it first if a running session uses it.
 
 Settings live in `/plugin configure tagteam`:
 

@@ -124,8 +124,7 @@ cmd_add() {
       die "Nothing added: that login is already ${other%.json}"
     done
   fi
-  echo "Added $1 ($email). It's ready the next time you start tagteam."
-  ping_account "$dir" || true
+  echo "Added $1 ($email). It's ready, with its usage, after the next time you start tagteam."
 }
 
 # One short prompt on the account. That claude loads tagteam and records the
@@ -139,6 +138,8 @@ ping_account() {
     for pid in $(pgrep -P "$$"); do is_claude "$pid" && kill -TERM "$pid" 2>/dev/null; done
   ) &
   dog=$!
+  # From the state folder, so no project hooks, instructions or MCP servers load.
+  cd "$state" || return 1
   CLAUDE_CONFIG_DIR=$1 TAGTEAM_REFRESH=1 claude -p --model haiku 'Reply with OK.' </dev/null >/dev/null 2>&1
   rc=$?
   kill "$dog" 2>/dev/null
@@ -173,8 +174,8 @@ cmd_remove() {
   check_label "$1"
   rec="$accounts/$1.json"
   [ -f "$rec" ] || die "no account named $1"
-  [ "$(active_label)" = "$1" ] && die "$1 is the active account. Switch to another first."
   dir=$(field "$rec" dir)
+  in_use "$dir" && die "$1 is in use by a running tagteam session. Switch that session to another account first."
   under_root "$dir" || die "refusing to touch $dir: not an account folder inside $root"
   printf 'Remove %s (%s)? [y/N] ' "$1" "$(field "$rec" email)"
   if [ -n "${TAGTEAM_CONFIRM-}" ]; then
@@ -188,6 +189,37 @@ cmd_remove() {
   rm -rf "$dir" || die "could not delete $dir"
   rm -f "$rec"
   echo "Removed $1."
+  [ "$(active_label)" = "$1" ] || return 0
+  next=$(for f in "$accounts"/*.json; do
+    [ -f "$f" ] || continue
+    l=${f##*/}
+    printf '%s|%s\n' "$(field "$f" order)" "${l%.json}"
+  done | sort -t '|' -k1,1n -k2,2 | head -n 1 | cut -d '|' -f 2)
+  if [ -n "$next" ]; then
+    put "$state/active" "$next"
+    put "$state/active-dir" "$(field "$accounts/$next.json" dir)"
+    echo "tagteam now starts on $next."
+  else
+    rm -f "$state/active" "$state/active-dir"
+    echo 'No accounts left for tagteam to start on.'
+  fi
+}
+
+put() {
+  printf '%s\n' "$2" > "$1.tmp-$$" && mv "$1.tmp-$$" "$1"
+}
+
+# A run-<id> file names the folder a launcher has claude open on and the launcher's pid.
+in_use() {
+  for f in "$state"/run-*; do
+    case $f in *.tmp-*) continue ;; esac
+    [ -f "$f" ] || continue
+    [ "$(sed -n 's/^dir=//p' "$f" | head -n 1)" = "$1" ] || continue
+    p=$(sed -n 's/^pid=//p' "$f" | head -n 1)
+    case $p in '' | *[!0-9]*) continue ;; esac
+    kill -0 "$p" 2>/dev/null && return 0
+  done
+  return 1
 }
 
 cmd_list() {
@@ -216,16 +248,16 @@ cmd_list() {
 
 # Only these first words are tagteam's; "tagteam -- add" sends add to claude.
 case ${1-} in
-  add | remove)
+  add | remove | delete)
     [ $# -eq 2 ] || die "usage: tagteam $1 <label>" 2
-    "cmd_$1" "$2"
+    if [ "$1" = add ]; then cmd_add "$2"; else cmd_remove "$2"; fi
     exit ;;
   list | refresh)
     [ $# -eq 1 ] || die "usage: tagteam $1" 2
     "cmd_$1"
     exit ;;
   --)
-    case ${2-} in add | remove | list | refresh) shift ;; esac ;;
+    case ${2-} in add | remove | delete | list | refresh) shift ;; esac ;;
 esac
 
 mkdir -p "$state" || exit 1

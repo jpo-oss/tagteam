@@ -8,7 +8,7 @@ export type Io = {
   exists(path: string): Promise<boolean>
   list(path: string): Promise<string[]>
   mtimeMs(path: string): Promise<number | undefined>
-  run(argv: string[], opts?: { env?: Record<string, string>; stdin?: string; timeoutMs?: number }): Promise<RunResult>
+  run(argv: string[], opts?: { cwd?: string; env?: Record<string, string>; stdin?: string; timeoutMs?: number }): Promise<RunResult>
   env(name: EnvName): Promise<string | undefined>
   now(): Promise<number>
   sleep(ms: number): Promise<void>

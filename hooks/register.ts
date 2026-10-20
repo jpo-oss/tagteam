@@ -74,7 +74,7 @@ export const register: Register = (on, options) => {
     } catch (err) {
       text = `tagteam: ${message(err)}`
     }
-    if (['add', 'edit', 'remove', 'refresh'].includes(parseArgs(e.args).sub)) {
+    if (['add', 'edit', 'remove', 'delete', 'refresh'].includes(parseArgs(e.args).sub)) {
       await refreshStatus(io, { status: (t) => $.ui.status(t) }).catch(() => undefined)
       redraw($)
     }

@@ -81,6 +81,25 @@ export const writeActive = async (io: Io, a: Account): Promise<void> => {
   await writeAtomic(io, `${dir}/active-dir`, `${oneLine(a.dir)}\n`)
 }
 
+export const clearActive = async (io: Io): Promise<void> => {
+  const dir = await stateDir(io)
+  await mustRun(io, ['rm', '-f', `${dir}/active`, `${dir}/active-dir`])
+}
+
+// True when a running launcher (its run-<id> file, with a live pid) has claude open on this folder.
+export const folderInUse = async (io: Io, folder: string): Promise<boolean> => {
+  const dir = await stateDir(io)
+  for (const name of await io.list(dir)) {
+    if (!name.startsWith('run-') || name.includes('.tmp-')) continue
+    const text = (await io.read(`${dir}/${name}`)) ?? ''
+    const get = (k: string) => text.split('\n').find((l) => l.startsWith(`${k}=`))?.slice(k.length + 1)
+    const pid = get('pid')
+    if (get('dir') !== folder || !pid || !/^\d+$/.test(pid)) continue
+    if ((await io.run(['kill', '-0', pid]).catch(() => undefined))?.exitCode === 0) return true
+  }
+  return false
+}
+
 export const writeSwitchRequest = async (io: Io, r: SwitchRequest): Promise<void> => {
   const lines: [string, string][] = [
     ['session', r.session],

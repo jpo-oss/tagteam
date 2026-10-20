@@ -1,7 +1,7 @@
 import type { Io } from './io'
 import { withSeed } from './appstate'
 import { homeAppState, linkShared, login, logout, prepareFolder, validLabel } from './folders'
-import { listAccounts, readActive, readJson, removeAccountRecord, saveAccount, stateRoot, writeActive, writeJsonAtomic } from './store'
+import { clearActive, folderInUse, listAccounts, readActive, readJson, removeAccountRecord, saveAccount, stateRoot, writeActive, writeJsonAtomic } from './store'
 import type { Account } from './types'
 
 export type Deps = {
@@ -18,16 +18,18 @@ export const realDeps = (
   confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string, openPane: Deps['openPane'], refreshLater: Deps['refreshLater'],
 ): Deps => ({ login, logout, confirm, switchTo, pluginRoot, openPane, refreshLater })
 
-export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove <label> | switch <label> | status | refresh | install'
+export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove (or delete) <label> | switch <label> | status | refresh | install'
 
 // A one-line run on each account: that session loads tagteam too and records its own usage reading.
+// Runs from the state folder so no project hooks, instructions or MCP servers load.
 export async function refreshAccounts(io: Io, accounts: readonly Account[]): Promise<string> {
+  const cwd = `${await stateRoot(io)}/state`
   const failed: string[] = []
   let done = 0
   for (const a of accounts) {
     if (a.excluded || a.needsSignIn) continue
     try {
-      const r = await io.run(['claude', '-p', '--model', 'haiku', 'Reply with OK.'], { env: { CLAUDE_CONFIG_DIR: a.dir, TAGTEAM_REFRESH: '1' }, stdin: '', timeoutMs: 60_000 })
+      const r = await io.run(['claude', '-p', '--model', 'haiku', 'Reply with OK.'], { cwd, env: { CLAUDE_CONFIG_DIR: a.dir, TAGTEAM_REFRESH: '1' }, stdin: '', timeoutMs: 60_000 })
       if (r.exitCode === 0) done++
       else failed.push(a.label)
     } catch {
@@ -180,13 +182,20 @@ async function edit(io: Io, label: string, opts: Record<string, string>): Promis
 async function remove(io: Io, label: string, deps: Deps): Promise<string> {
   const a = (await listAccounts(io)).find((x) => x.label === label)
   if (!a) return `No account named ${label}.`
-  if ((await readActive(io)) === label) return `${label} is the active account. Switch to another first.`
+  if (await folderInUse(io, a.dir)) return `${label} is in use by a running tagteam session. Switch that session to another account first.`
   await assertUnderRoot(io, a.dir)
   if (!(await deps.confirm(`Remove ${label} (${a.email}) and sign it out?`))) return 'Cancelled.'
   const signedOut = await deps.logout(io, a.dir)
   await rmUnderRoot(io, a.dir)
   await removeAccountRecord(io, label)
-  return signedOut ? `Removed ${label}.` : `Removed ${label}, but sign-out failed. Sign out of that login at claude.ai if needed.`
+  let text = signedOut ? `Removed ${label}.` : `Removed ${label}, but sign-out failed. Sign out of that login at claude.ai if needed.`
+  if ((await readActive(io)) === label) {
+    const next = (await listAccounts(io))[0]
+    if (next) await writeActive(io, next)
+    else await clearActive(io)
+    text += next ? ` tagteam now starts on ${next.label}.` : ' No accounts left for tagteam to start on.'
+  }
+  return text
 }
 
 const launcherPath = async (io: Io): Promise<string> => {
@@ -238,7 +247,9 @@ export async function refreshLauncher(io: Io, pluginRoot: string): Promise<void>
 }
 
 export async function runCommand(io: Io, args: string, deps: Deps): Promise<string> {
-  const { sub, label, opts } = parseArgs(args)
+  const parsed = parseArgs(args)
+  const { label, opts } = parsed
+  const sub = parsed.sub === 'delete' ? 'remove' : parsed.sub
   if (sub === '' || sub === 'status') return deps.openPane()
   if (!['add', 'edit', 'remove', 'switch', 'install', 'refresh'].includes(sub)) return USAGE
   if (sub !== 'install' && sub !== 'refresh') {
