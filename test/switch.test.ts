@@ -310,11 +310,14 @@ test('with no account to go to it notifies once and stays', async () => {
   expect(calls.exits).toBe(0)
 })
 
-test('handover names both accounts and the reason, and asks to resume only what was running', () => {
+test('handover names both accounts and the reason, resumes only what was running, and never stops to ask', () => {
   const text = handover('a', 'b', 'a reached 95% of its five_hour limit')
   expect(text).toContain('a reached 95% of its five_hour limit')
   expect(text).toContain('subagent')
   expect(text).toContain('background task')
+  expect(text).toContain('workflow')
+  expect(text).toMatch(/waiting on died too: re-run them without asking/)
+  expect(text).toMatch(/start it again fresh with the same instructions, without asking/)
   expect(text).not.toMatch(/[\u2013\u2014\n]/)
   expect(handover('a', 'a', 'x')).not.toContain('reopened')
   expect(handover(undefined, 'b', 'x')).toContain('closed on your previous account and reopened on the b account')
