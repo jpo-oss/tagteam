@@ -15,7 +15,7 @@ Accounts are identified by `oauthAccount.accountUuid`, so readings from a plain 
 ## Plugin
 
 - Records the usage windows from `session.measure` and token counts from `turn.complete` per account, and spots windows that reset early.
-- At the threshold, picks the eligible account with the lowest usage (on a tie, accounts with a known reading come first, then your order). With auto switch off, it asks once per limit window across all sessions.
+- At the threshold, picks the eligible account with the lowest usage. Accounts within the same 10 points go to the one whose weekly limit resets soonest, so its leftover allowance gets used. After that, accounts with a known reading come first, then your order. With auto switch off, it asks once per limit window across all sessions.
 - Writes the switch at turn end: the new active account, a switch request for the launcher, then a scheduled `exit`.
 - Provides the `/tagteam` commands, the dashboard pane and a status line entry.
 
