@@ -71,6 +71,26 @@ if line 1 | grep -q "runfile=dir=$case_dir/A pid="; then pass; else fail; fi
 it 'run file removed after exit'
 if no_leftovers; then pass; else fail; fi
 
+pinned_start() {
+  setup "pin-$1"
+  mkdir -p "$case_dir/A" "$case_dir/B" "$case_dir/C" "$case_dir/work/sub" "$case_dir/work2"
+  echo "$case_dir/$2" > "$case_dir/home/state/active-dir"
+  pins=
+  for p in $3; do pins="$pins${pins:+,}$case_dir/$p"; done
+  printf '%s=%s\n' "$case_dir/work" "$pins" > "$case_dir/home/state/pins"
+  echo 'exit 0' > "$case_dir/fake/mode-1"
+  (cd "$case_dir/$4" && launch)
+}
+pinned_start moves A "gone B C" work
+it 'a pinned folder starts on its first pinned account that exists'
+if [ "$(field 1 cfg)" = "$case_dir/B" ]; then pass; else fail; fi
+pinned_start keeps C "B C" work/sub
+it 'a subfolder keeps an active account that is pinned'
+if [ "$(field 1 cfg)" = "$case_dir/C" ]; then pass; else fail; fi
+pinned_start sibling A B work2
+it 'a folder that only shares a prefix with a pinned one is not pinned'
+if [ "$(field 1 cfg)" = "$case_dir/A" ]; then pass; else fail; fi
+
 setup switch
 echo "$case_dir/A" > "$case_dir/home/state/active-dir"
 echo switch > "$case_dir/fake/mode-1"

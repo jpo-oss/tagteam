@@ -11,7 +11,7 @@ export type Account = {
   label: string; dir: string; accountUuid: string; email: string
   order: number; excluded: boolean; needsSignIn: boolean
 }
-export type Settings = { autoSwitch: boolean; threshold: number }
+export type Settings = { autoSwitch: boolean; threshold: number; pinnedOnly: boolean }
 export type Pick =
   | { kind: 'switch'; label: string }
   | { kind: 'wait'; label: string; resumeAt: number }

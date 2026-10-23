@@ -4,7 +4,7 @@ import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
 import type { Io } from '../src/io'
 import { runCommand, type Deps } from '../src/commands'
-import { readActive, saveAccount, saveUsage, snoozed } from '../src/store'
+import { readActive, saveAccount, saveUsage, snoozed, writePins } from '../src/store'
 import { evaluate, handover, manualSwitch, newState, scheduleExit, settingsFrom, turnEnded, type SwitchCtx, type SwitchUi } from '../src/switch'
 import type { Account, Settings } from '../src/types'
 
@@ -50,7 +50,7 @@ const fakeUi = (answer?: () => Promise<string>, turns = 1): { ui: SwitchUi; call
   }
   return { ui, calls }
 }
-const SETTINGS: Settings = { autoSwitch: true, threshold: 95 }
+const SETTINGS: Settings = { autoSwitch: true, threshold: 95, pinnedOnly: true }
 const ctx = (io: Io, ui: SwitchUi, over: Partial<Settings> = {}): SwitchCtx =>
   ({ io, ui, state: newState(), settings: { ...SETTINGS, ...over } })
 const request = async (io: Io, run = 'r1') => {
@@ -359,6 +359,48 @@ test('with no account to go to it notifies once and stays', async () => {
   expect(calls.exits).toBe(0)
 })
 
+test('a pinned folder switches only between its pinned accounts and leaves the shared active account alone', async () => {
+  const io = await setup()
+  await saveAccount(io, acct('c', 2))
+  await setPct(io, 'uc', 40)
+  await writePins(io, { '/w': ['/t/a', '/t/c'] })
+  const { ui } = fakeUi()
+  await evaluate(ctx(io, ui), Date.now())
+  expect((await request(io))?.target_label).toBe('c')
+  expect(await readActive(io)).toBe('a')
+})
+
+test('with every pinned account limited it stays pinned, unless pinnedOnly is off', async () => {
+  const io = await setup()
+  await writePins(io, { '/w': ['/t/a'] })
+  const strict = fakeUi()
+  await evaluate(ctx(io, strict.ui), Date.now())
+  expect(await request(io)).toBeUndefined()
+  expect(strict.calls.notes[0]).toContain('so this session stays open')
+  const loose = fakeUi()
+  await evaluate(ctx(io, loose.ui, { pinnedOnly: false }), Date.now())
+  expect((await request(io))?.target_label).toBe('b')
+  expect(await readActive(io)).toBe('b')
+})
+
+test('a pinned session does not follow another session onto an account outside its pins', async () => {
+  const io = await setup({ pct: 10 })
+  await io.write('/t/state/active', 'b\n')
+  await writePins(io, { '/w': ['/t/a'] })
+  const { ui } = fakeUi()
+  await evaluate(ctx(io, ui), Date.now())
+  expect(await request(io)).toBeUndefined()
+})
+
+test('a manual switch to a pinned account leaves the shared active account alone', async () => {
+  const io = await setup({ pct: 10 })
+  await writePins(io, { '/w': ['/t/a', '/t/b'] })
+  const c = ctx(io, fakeUi().ui)
+  await manualSwitch(c, 'b')
+  expect((await request(io))?.target_label).toBe('b')
+  expect(await readActive(io)).toBe('a')
+})
+
 test('handover names both accounts and the reason, resumes only what was running, and never stops to ask', () => {
   const text = handover('a', 'b', 'a reached 95% of its five_hour limit')
   expect(text).toContain('a reached 95% of its five_hour limit')
@@ -372,9 +414,9 @@ test('handover names both accounts and the reason, resumes only what was running
 })
 
 test('settingsFrom applies defaults and clamps the threshold', () => {
-  expect(settingsFrom({})).toEqual({ autoSwitch: false, threshold: 95 })
-  expect(settingsFrom({ autoSwitch: true, threshold: 20 })).toEqual({
-    autoSwitch: true, threshold: 50,
+  expect(settingsFrom({})).toEqual({ autoSwitch: false, threshold: 95, pinnedOnly: true })
+  expect(settingsFrom({ autoSwitch: true, threshold: 20, pinnedOnly: false })).toEqual({
+    autoSwitch: true, threshold: 50, pinnedOnly: false,
   })
 })
 
@@ -402,7 +444,7 @@ test('/tagteam switch <label> goes through deps', async () => {
   const deps: Deps = {
     login: async () => undefined, logout: async () => true, confirm: async () => true,
     switchTo: async (l) => (seen.push(l), `Switching to ${l}.`), pluginRoot: '/p',
-    openPane: async () => '', refreshLater: () => undefined,
+    openPane: async () => '', refreshLater: () => undefined, cwd: async () => '/w',
   }
   expect(await runCommand(io, 'switch b', deps)).toBe('Switching to b.')
   expect(seen).toEqual(['b'])

@@ -244,6 +244,28 @@ cmd_list() {
   }
 }
 
+under() {
+  case $1/ in "${2%/}"/*) return 0 ;; esac
+  return 1
+}
+
+# Lines are <folder>=<account dir>,<account dir>. The pin on this folder or its nearest pinned parent wins.
+pinned_dirs() {
+  [ -f "$state/pins" ] || return 0
+  phys=$(pwd -P)
+  best=
+  dirs=
+  while IFS= read -r l || [ -n "$l" ]; do
+    folder=${l%=*}
+    [ "$folder" = "$l" ] && continue
+    under "$PWD" "$folder" || under "$phys" "$folder" || continue
+    [ -z "$dirs" ] || [ ${#folder} -gt ${#best} ] || continue
+    best=$folder
+    dirs=${l##*=}
+  done < "$state/pins"
+  printf '%s' "$dirs"
+}
+
 # Only these first words are tagteam's; "tagteam -- add" sends add to claude.
 case ${1-} in
   add | remove | delete)
@@ -260,6 +282,19 @@ esac
 
 mkdir -p "$state" || exit 1
 dir=$(head -n 1 "$state/active-dir" 2>/dev/null)
+pins=$(pinned_dirs)
+case ,$pins, in
+  ,, | *",$dir,"*) ;;
+  *)
+    set -f
+    old_ifs=$IFS
+    IFS=,
+    for d in $pins; do
+      if [ -d "$d" ]; then dir=$d; break; fi
+    done
+    IFS=$old_ifs
+    set +f ;;
+esac
 session=
 handover=
 label=

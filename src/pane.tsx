@@ -1,7 +1,8 @@
 import type { ElementTable } from 'claude-code'
 import type { Io } from './io'
 import { currentAccountUuid, localDay, when } from './session'
-import { listAccounts, loadUsage } from './store'
+import { pinFor } from './pins'
+import { listAccounts, loadUsage, readPins } from './store'
 import type { Settings, Tokens } from './types'
 import { effectivePercent, windowName } from './usage'
 
@@ -20,10 +21,10 @@ const limited = (s: string): string => {
 
 export const barColor = (pct: number, threshold: number): string => (pct >= threshold ? 'error' : pct >= 70 ? 'warning' : 'success')
 
-export type Pane = { rows: Row[]; unmanaged: boolean }
+export type Pane = { rows: Row[]; unmanaged: boolean; pinned?: string }
 
 // The highlighted card is the account this session runs on.
-export async function paneRows(io: Io, now: number, threshold: number): Promise<Pane> {
+export async function paneRows(io: Io, now: number, threshold: number, cwd?: string): Promise<Pane> {
   const session = await currentAccountUuid(io)
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now)
@@ -55,7 +56,10 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
       early: last ? when(last, now) : undefined,
     })
   }
-  return { rows, unmanaged: session !== undefined && !accounts.some((a) => a.accountUuid === session) }
+  const pin = cwd === undefined ? undefined : pinFor(await readPins(io), cwd)
+  const labels = pin ? accounts.filter((a) => pin.dirs.includes(a.dir)).map((a) => a.label) : []
+  const pinned = labels.length ? `Pinned here: ${labels.join(', ')}${pin!.folder === cwd ? '' : ` (from ${pin!.folder})`}` : undefined
+  return { rows, unmanaged: session !== undefined && !accounts.some((a) => a.accountUuid === session), pinned }
 }
 
 type Parts = Pick<ElementTable, 'Box' | 'Text'>
@@ -142,11 +146,11 @@ const cardLines = (r: Row, columns: number, bar: number): Seg[][] => {
 }
 
 // A function declaration, like the other files that take engine parts.
-export function drawPane({ Box, Text }: Parts, { rows, unmanaged }: Pane, bodyColumns: number, settings: string) {
+export function drawPane({ Box, Text }: Parts, { rows, unmanaged, pinned }: Pane, bodyColumns: number, settings: string) {
   // One column of margin each side and a blank line on top.
   const columns = Math.max(1, bodyColumns - 2)
   const frame = { flexDirection: 'column', width: bodyColumns, paddingX: 1, paddingTop: 1 } as const
-  const head = plain(settings, columns).map((l, i) => <Text key={`s${i}`}>{l}</Text>)
+  const head = [settings, ...(pinned ? [pinned] : [])].flatMap((t, j) => plain(t, columns).map((l, i) => <Text key={`s${j}-${i}`}>{l}</Text>))
   if (!rows.length) return <Box {...frame}>{head}{plain('No accounts yet. Run /tagteam add <label>.', columns).map((l, i) => <Text key={String(i)} dimColor>{l}</Text>)}</Box>
   const note = unmanaged ? plain("This session uses an account tagteam doesn't manage.", columns).map((l, i) => <Text key={`u${i}`} dimColor>{l}</Text>) : []
   // Room left beside the label, percent and the longest reset text ("resets Thu 12:30 PM").
