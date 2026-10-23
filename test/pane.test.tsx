@@ -2,7 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import { memoryIo } from './support/memory'
 import { routeTo } from './support/route'
 import { localDay } from '../src/session'
-import { saveAccount, saveUsage, writeActive } from '../src/store'
+import { paneRows } from '../src/pane'
+import { saveAccount, saveUsage, writeActive, writePins } from '../src/store'
 import type { Account, Usage } from '../src/types'
 
 declare const setTimeout: (fn: (v?: unknown) => void, ms: number) => unknown
@@ -341,4 +342,13 @@ test('the open pane polls for other sessions, and stops when it closes', { plugi
   expect(ticks.length).toBe(0)
   expect(stamps).toBe(after)
   await ui.unmount()
+})
+
+test('the pane names the accounts pinned to this folder, and where the pin comes from', async () => {
+  const io = await seed()
+  await writePins(io, { '/w': ['/t/a', '/t/d', '/t/gone'] })
+  expect((await paneRows(io, Date.now(), 95, '/w')).pinned).toBe('Pinned here: a, d')
+  expect((await paneRows(io, Date.now(), 95, '/w/sub')).pinned).toBe('Pinned here: a, d (from /w)')
+  expect((await paneRows(io, Date.now(), 95, '/x')).pinned).toBeUndefined()
+  expect((await paneRows(io, Date.now(), 95)).pinned).toBeUndefined()
 })

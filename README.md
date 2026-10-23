@@ -65,6 +65,8 @@ Other commands:
 |---|---|
 | `/tagteam` or `/tagteam status` | Opens the dashboard: each account's usage windows, reset times, input/output tokens and the auto switch setting. It updates live. |
 | `/tagteam switch <label>` | Moves this session to that account now; other `tagteam` sessions follow at the end of their turn |
+| `/tagteam pin <label>[,<label>...]` | Pins this folder and everything under it to those accounts. New `tagteam` sessions here start on one of them, and switches stay within them. |
+| `/tagteam unpin [<label>]` | Takes one account off this folder's pins, or all of them with no label. The dashboard shows what's pinned here. |
 | `/tagteam edit <label> name=<new> order=<n> exclude=true\|false` | Renames, reorders, or takes an account out of rotation |
 | `/tagteam refresh` | Sends a one-line prompt from each account so the dashboard shows its current usage. New accounts get this on their own. |
 | `/tagteam remove <label>` (or `delete`) | Signs the account out and deletes its folder. You can't remove an account a running tagteam session is using. |
@@ -88,6 +90,7 @@ Settings live in `/plugin configure tagteam`:
 |---|---|---|
 | `autoSwitch` | `false` | Switch without asking. When off, one session asks and the rest wait for that answer. No means it won't ask again until that limit window resets. |
 | `threshold` | `95` | Usage percentage (50 to 100) that triggers a switch |
+| `pinnedOnly` | `true` | In a pinned folder, switch only between the pinned accounts and wait for one to reset when they're all limited. Off: fall back to any account. |
 
 Advanced: set `TAGTEAM_STALL` (seconds, default 30) to change how long the launcher waits for Claude to close itself before closing it.
 

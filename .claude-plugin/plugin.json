@@ -21,6 +21,12 @@
       "default": 95,
       "min": 50,
       "max": 100
+    },
+    "pinnedOnly": {
+      "type": "boolean",
+      "title": "Pinned folders stay on their accounts",
+      "description": "In a folder pinned with /tagteam pin, only switch between its pinned accounts and wait for one to reset when all are limited. Off: fall back to any account.",
+      "default": true
     }
   }
 }

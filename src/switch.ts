@@ -2,9 +2,10 @@ import type { EngineInterface, PluginOptions } from 'claude-code'
 import { withTrust } from './appstate'
 import type { Io } from './io'
 import { pickTarget } from './pick'
+import { pinFor } from './pins'
 import { configFile, currentAccountUuid, whenAt } from './session'
 import {
-  awaitDecision, claimDecision, dropDecision, listAccounts, loadUsage, pruneDecisions, readActive, readJson,
+  awaitDecision, claimDecision, dropDecision, listAccounts, loadUsage, pruneDecisions, readActive, readJson, readPins,
   releaseDecision, snooze, snoozed, writeActive, writeJsonAtomic, writeSwitchRequest,
 } from './store'
 import type { Account, Settings, Usage, Window } from './types'
@@ -20,7 +21,8 @@ export type SwitchUi = {
   exitSoon(ready: () => boolean): void
 }
 // A decision held in memory until no turn is running, so the launcher's stall timer never cuts a turn short.
-export type Planned = { from?: string; target: Account; reason: string; resumeAt?: number; toast?: string; key: string }
+// A pinned session leaves the shared active account alone, so sessions in other folders don't follow it onto a pinned one.
+export type Planned = { from?: string; target: Account; reason: string; resumeAt?: number; toast?: string; key: string; pinned?: boolean }
 export type SwitchState = {
   inTurn: boolean; planned?: Planned; committing: boolean; pendingExit: boolean; exitScheduled: boolean; told: Set<string>
 }
@@ -51,6 +53,7 @@ export function settingsFrom(o: PluginOptions): Settings {
   return {
     autoSwitch: o.autoSwitch === true,
     threshold: Math.min(100, Math.max(50, num(o.threshold, 95))),
+    pinnedOnly: o.pinnedOnly !== false,
   }
 }
 
@@ -107,7 +110,7 @@ export async function commit(ctx: SwitchCtx): Promise<void> {
     await copyTrust(io, await ui.cwd(), p.target.dir)
     // No turns means no transcript yet, so there is nothing to resume.
     const session = (await ui.turns()) > 0 ? await ui.sessionId() : ''
-    await writeActive(io, p.target)
+    if (!p.pinned) await writeActive(io, p.target)
     await writeSwitchRequest(io, {
       run, session, targetLabel: p.target.label, targetDir: p.target.dir,
       resumeAt: p.resumeAt === undefined ? undefined : Math.ceil(p.resumeAt / 1000),
@@ -157,6 +160,12 @@ async function decide(ctx: SwitchCtx, uuid: string, w: Window, question: string,
   return answer === 'Yes'
 }
 
+const pinnedAccounts = async (io: Io, ui: SwitchUi, accounts: readonly Account[]): Promise<Account[]> => {
+  const pins = await readPins(io)
+  const pin = Object.keys(pins).length ? pinFor(pins, await ui.cwd()) : undefined
+  return pin ? accounts.filter((a) => pin.dirs.includes(a.dir)) : []
+}
+
 const busy = (s: SwitchState): boolean => s.pendingExit || s.committing || s.planned !== undefined
 
 export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
@@ -167,14 +176,16 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   const accounts = await listAccounts(io)
   const current = accounts.find((a) => a.accountUuid === uuid)
   const run = await io.env('TAGTEAM_RUN')
+  const pinned = await pinnedAccounts(io, ui, accounts)
+  const pool = pinned.length ? pinned : accounts
 
   if (run && current) {
     const active = await readActive(io)
-    const lead = accounts.find((a) => a.label === active && a.label !== current.label && !a.needsSignIn && !a.excluded)
+    const lead = pool.find((a) => a.label === active && a.label !== current.label && !a.needsSignIn && !a.excluded)
     if (lead && !topWindow((await loadUsage(io, lead.accountUuid)).windows, settings.threshold, now)) {
       const reason = `another session switched to ${lead.label}`
       return requestSwitch(ctx, {
-        from: current.label, target: lead, reason, key: reason,
+        from: current.label, target: lead, reason, key: reason, pinned: pinned.length > 0,
         toast: `Following the switch from ${current.label} to ${lead.label}`,
       })
     }
@@ -196,7 +207,11 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   if (w.resetsAt && (await snoozed(io, uuid, w.kind, w.resetsAt))) return
 
   const usage = Object.fromEntries(await Promise.all(accounts.map(async (a) => [a.accountUuid, await loadUsage(io, a.accountUuid)] as const)))
-  const pick = pickTarget(accounts, usage, current.label, settings.threshold, now)
+  let pick = pickTarget(pool, usage, current.label, settings.threshold, now)
+  if (pinned.length && !settings.pinnedOnly && pick.kind !== 'switch') {
+    const any = pickTarget(accounts, usage, current.label, settings.threshold, now)
+    if (any.kind === 'switch') pick = any
+  }
   if (pick.kind === 'none') {
     if (once(state, `none:${episode}`)) await ui.notify(`${said} and no account is available to switch to.`)
     return
@@ -217,7 +232,7 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
     if (!(await decide(ctx, uuid, w, question, now)) || busy(state)) return
   }
   await requestSwitch(ctx, {
-    from: current.label, target, resumeAt, key: episode,
+    from: current.label, target, resumeAt, key: episode, pinned: pinned.some((a) => a.label === target.label),
     reason: `${current.label} reached ${pct}% of its ${name} limit`,
     toast: resumeAt === undefined
       ? `Switched from ${current.label} (${pct}% of its ${name} limit) to ${to}`
@@ -237,6 +252,7 @@ export async function manualSwitch(ctx: SwitchCtx, label: string): Promise<strin
   const from = accounts.find((a) => a.accountUuid === uuid)?.label
   if (from === label) return `Already on ${label}.`
   const reason = `you switched to ${label} with /tagteam switch`
-  await requestSwitch(ctx, { from, target, reason, key: reason })
+  const pinned = (await pinnedAccounts(io, ctx.ui, accounts)).some((a) => a.label === label)
+  await requestSwitch(ctx, { from, target, reason, key: reason, pinned })
   return `Switching to ${label}. This session closes and reopens there in a moment.`
 }

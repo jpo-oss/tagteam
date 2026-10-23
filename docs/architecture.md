@@ -16,6 +16,7 @@ Accounts are identified by `oauthAccount.accountUuid`, so readings from a plain 
 
 - Records the usage windows from `session.measure` and token counts from `turn.complete` per account, and spots windows that reset early.
 - At the threshold, picks the eligible account with the lowest usage. Accounts within the same 10 points go to the one whose weekly limit resets soonest, so its leftover allowance gets used. After that, accounts with a known reading come first, then your order. With auto switch off, it asks once per limit window across all sessions.
+- In a pinned folder, picks only from that folder's pinned accounts (falling back to any account when `pinnedOnly` is off) and leaves the shared active account alone, so sessions elsewhere don't follow it.
 - Writes the switch at turn end: the new active account, a switch request for the launcher, then a scheduled `exit`.
 - Provides the `/tagteam` commands, the dashboard pane and a status line entry.
 
@@ -23,10 +24,10 @@ Sessions outside the launcher (desktop app, IDE, plain `claude`) get tracking an
 
 ## Launcher
 
-`bin/tagteam` starts `claude` in the active account's folder and stays behind it. When Claude exits, it reads the session's switch request. With none, it exits with Claude's code. With one, it runs `claude --resume <session> <handover> <original args>` in the target folder. The handover tells Claude why it moved and to pick up interrupted subagents, workflows and background work without asking. A request with no session (nothing was said yet) starts a plain `claude <original args>` there instead, and so does a resume that exits with code 1 within 10 seconds.
+`bin/tagteam` starts `claude` in the active account's folder and stays behind it. In a pinned folder it uses the active account only if it's pinned there, and otherwise the first pinned account. When Claude exits, it reads the session's switch request. With none, it exits with Claude's code. With one, it runs `claude --resume <session> <handover> <original args>` in the target folder. The handover tells Claude why it moved and to pick up interrupted subagents, workflows and background work without asking. A request with no session (nothing was said yet) starts a plain `claude <original args>` there instead, and so does a resume that exits with code 1 within 10 seconds.
 
 If Claude hasn't exited within the stall timeout (`TAGTEAM_STALL` seconds, 30 by default) after a request (for example on the limit menu), the launcher sends SIGTERM, then SIGKILL 10 seconds later. When every account is limited, the request carries a resume time and the launcher sleeps until then. If the current account resets first, no request is written and the session stays open.
 
 ## State
 
-Shared state lives in `~/.claude-accounts/state/` (or `$TAGTEAM_HOME/state/`): account records and usage as one JSON file each, the active account, snoozes, question claims, and one plain `key=value` switch file per launcher run. Every write goes to a temp file and is moved into place.
+Shared state lives in `~/.claude-accounts/state/` (or `$TAGTEAM_HOME/state/`): account records and usage as one JSON file each, the active account, folder pins (`<folder>=<account dir>,<account dir>`, one line each), snoozes, question claims, and one plain `key=value` switch file per launcher run. Every write goes to a temp file and is moved into place.

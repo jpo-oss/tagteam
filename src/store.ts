@@ -1,4 +1,5 @@
 import type { Io } from './io'
+import { formatPins, parsePins, type Pins } from './pins'
 import type { Account, SwitchRequest, Usage } from './types'
 import { emptyUsage } from './usage'
 
@@ -63,7 +64,7 @@ export const saveUsage = async (io: Io, u: Usage): Promise<void> =>
 // Changes whenever any session on this machine writes an account, a reading or the default.
 export const stateStamp = async (io: Io): Promise<string> => {
   const dir = await stateDir(io)
-  const parts = [`active:${await io.mtimeMs(`${dir}/active`)}`]
+  const parts = [`active:${await io.mtimeMs(`${dir}/active`)}`, `pins:${await io.mtimeMs(`${dir}/pins`)}`]
   for (const sub of ['accounts', 'usage']) {
     for (const n of await io.list(`${dir}/${sub}`)) parts.push(`${sub}/${n}:${await io.mtimeMs(`${dir}/${sub}/${n}`)}`)
   }
@@ -80,6 +81,11 @@ export const writeActive = async (io: Io, a: Account): Promise<void> => {
   await writeAtomic(io, `${dir}/active`, `${oneLine(a.label)}\n`)
   await writeAtomic(io, `${dir}/active-dir`, `${oneLine(a.dir)}\n`)
 }
+
+export const readPins = async (io: Io): Promise<Pins> => parsePins((await io.read(`${await stateDir(io)}/pins`)) ?? '')
+
+export const writePins = async (io: Io, pins: Pins): Promise<void> =>
+  writeAtomic(io, `${await stateDir(io)}/pins`, formatPins(pins))
 
 export const clearActive = async (io: Io): Promise<void> => {
   const dir = await stateDir(io)

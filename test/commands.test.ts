@@ -20,7 +20,7 @@ const acct = (label: string, uuid: string, order = 0): Account =>
 const stubLogin = (uuid: string): Deps['login'] => async (io, dir) =>
   io.write(`${dir}/.claude.json`, JSON.stringify({ oauthAccount: { accountUuid: uuid, emailAddress: 'a@example.com' } }))
 const deps = (over: Partial<Deps> = {}): Deps => ({
-  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', refreshLater: () => undefined, ...over,
+  login: stubLogin('u-new'), logout: async () => true, confirm: async () => true, switchTo: async () => '', pluginRoot: '/p', openPane: async () => 'pane', refreshLater: () => undefined, cwd: async () => '/w', ...over,
 })
 
 test('parseArgs', () => {
@@ -461,4 +461,21 @@ test('refresh runs one short prompt per usable account and reports failures by l
   expect(calls.map((c) => c[1]?.CLAUDE_CONFIG_DIR)).toEqual(['/t/a', '/t/d', '/t/e'])
   expect(calls[0]).toEqual([['claude', '-p', '--model', 'haiku', 'Reply with OK.'], { CLAUDE_CONFIG_DIR: '/t/a', TAGTEAM_REFRESH: '1' }, 60000, '/t/state'])
   expect(opened).toBe(1)
+})
+
+test('pin adds accounts to this folder, unpin takes them off, and the folder must hold the pin', async () => {
+  const io = memoryIo({ HOME: '/h', TAGTEAM_HOME: '/t' })
+  for (const [l, o] of [['a', 0], ['b', 1], ['c', 2]] as const) {
+    await saveAccount(io, { label: l, dir: `/t/${l}`, accountUuid: `u${l}`, email: `${l}@example.com`, order: o, excluded: false, needsSignIn: false })
+  }
+  expect(await runCommand(io, 'pin a,b', deps())).toBe('/w is pinned to a, b. New tagteam sessions here start on one of them, and switches stay within them.')
+  expect(await runCommand(io, 'pin c', deps())).toContain('pinned to a, b, c')
+  expect(await runCommand(io, 'pin zz', deps())).toBe('No account named zz.')
+  expect(await runCommand(io, 'pin', deps())).toContain('Usage')
+  expect(await runCommand(io, 'pin A', deps())).toContain('Labels are')
+  expect(await runCommand(io, 'unpin b', deps())).toContain('pinned to a, c')
+  expect(await runCommand(io, 'unpin', deps({ cwd: async () => '/w/sub' }))).toBe('/w/sub has no pins of its own. Its pins come from /w; run unpin there.')
+  expect(await io.read('/t/state/pins')).toBe('/w=/t/a,/t/c\n')
+  expect(await runCommand(io, 'unpin', deps())).toBe('Unpinned /w.')
+  expect(await io.read('/t/state/pins')).toBe('')
 })

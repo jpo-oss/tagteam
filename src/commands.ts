@@ -1,7 +1,8 @@
 import type { Io } from './io'
 import { withSeed } from './appstate'
 import { homeAppState, linkShared, login, logout, prepareFolder, validLabel } from './folders'
-import { clearActive, folderInUse, listAccounts, readActive, readJson, removeAccountRecord, saveAccount, stateRoot, writeActive, writeJsonAtomic } from './store'
+import { pinFor } from './pins'
+import { clearActive, folderInUse, listAccounts, readActive, readJson, readPins, removeAccountRecord, saveAccount, stateRoot, writeActive, writeJsonAtomic, writePins } from './store'
 import type { Account } from './types'
 
 export type Deps = {
@@ -12,13 +13,15 @@ export type Deps = {
   pluginRoot: string
   openPane(): Promise<string>
   refreshLater(accounts: Account[]): void
+  cwd(): Promise<string>
 }
 
 export const realDeps = (
   confirm: Deps['confirm'], switchTo: Deps['switchTo'], pluginRoot: string, openPane: Deps['openPane'], refreshLater: Deps['refreshLater'],
-): Deps => ({ login, logout, confirm, switchTo, pluginRoot, openPane, refreshLater })
+  cwd: Deps['cwd'],
+): Deps => ({ login, logout, confirm, switchTo, pluginRoot, openPane, refreshLater, cwd })
 
-export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove (or delete) <label> | switch <label> | status | refresh | install'
+export const USAGE = 'Usage: /tagteam add <label> | edit <label> [name=] [order=] [exclude=true|false] | remove (or delete) <label> | switch <label> | pin <label>[,<label>...] | unpin [<label>] | status | refresh | install'
 
 // A one-line run on each account: that session loads tagteam too and records its own usage reading.
 // Runs from the state folder so no project hooks, instructions or MCP servers load.
@@ -197,6 +200,32 @@ async function remove(io: Io, label: string, deps: Deps): Promise<string> {
   return text
 }
 
+// Pins sit on this exact folder; a pin on a parent folder is changed from there.
+async function pin(io: Io, cwd: string, names: string[], add: boolean): Promise<string> {
+  const accounts = await listAccounts(io)
+  const picked: Account[] = []
+  for (const n of names) {
+    const a = accounts.find((x) => x.label === n)
+    if (!a) return `No account named ${n}.`
+    picked.push(a)
+  }
+  const pins = await readPins(io)
+  const own = pins[cwd] ?? []
+  const inherited = pinFor(pins, cwd)
+  if (!add && !own.length) {
+    return inherited ? `${cwd} has no pins of its own. Its pins come from ${inherited.folder}; run unpin there.` : `${cwd} has no pins.`
+  }
+  const next = add
+    ? [...own, ...picked.map((a) => a.dir).filter((d) => !own.includes(d))]
+    : names.length ? own.filter((d) => !picked.some((a) => a.dir === d)) : []
+  pins[cwd] = next
+  if (!next.length) delete pins[cwd]
+  await writePins(io, pins)
+  const labels = accounts.filter((a) => next.includes(a.dir)).map((a) => a.label)
+  if (!labels.length) return `Unpinned ${cwd}.${inherited && inherited.folder !== cwd ? ` Pins from ${inherited.folder} apply now.` : ''}`
+  return `${cwd} is pinned to ${labels.join(', ')}. New tagteam sessions here start on one of them, and switches stay within them.`
+}
+
 const launcherPath = async (io: Io): Promise<string> => {
   const home = await io.env('HOME')
   if (!home) throw new Error('HOME is not set')
@@ -250,8 +279,12 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
   const { label, opts } = parsed
   const sub = parsed.sub === 'delete' ? 'remove' : parsed.sub
   if (sub === '' || sub === 'status') return deps.openPane()
-  if (!['add', 'edit', 'remove', 'switch', 'install', 'refresh'].includes(sub)) return USAGE
-  if (sub !== 'install' && sub !== 'refresh') {
+  if (!['add', 'edit', 'remove', 'switch', 'pin', 'unpin', 'install', 'refresh'].includes(sub)) return USAGE
+  const names = (label ?? '').split(',').filter(Boolean)
+  if (sub === 'pin' || sub === 'unpin') {
+    if (sub === 'pin' && !names.length) return USAGE
+    if (names.some((n) => !validLabel(n))) return LABEL_MSG
+  } else if (sub !== 'install' && sub !== 'refresh') {
     if (!label) return USAGE
     const problem = sub === 'add' || sub === 'edit' ? labelProblem(label) : validLabel(label) ? undefined : LABEL_MSG
     if (problem) return problem
@@ -262,6 +295,7 @@ export async function runCommand(io: Io, args: string, deps: Deps): Promise<stri
     return TERMINAL
   }
   if (sub === 'install') return install(io, deps.pluginRoot)
+  if (sub === 'pin' || sub === 'unpin') return pin(io, await deps.cwd(), names, sub === 'pin')
   if (sub === 'refresh') {
     const text = await refreshAccounts(io, await listAccounts(io))
     await deps.openPane().catch(() => undefined)

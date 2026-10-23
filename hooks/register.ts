@@ -3,7 +3,7 @@ import { ioFrom, type Io } from '../src/io'
 import { adoptFolders, parseArgs, realDeps, refreshAccounts, refreshLauncher, runCommand } from '../src/commands'
 import { drawError, drawPane, paneRows, settingsLine } from '../src/pane'
 import { recordMeasure, recordTurn, refreshStatus } from '../src/session'
-import { listAccounts, stateStamp } from '../src/store'
+import { listAccounts, readPins, stateStamp } from '../src/store'
 import type { Account } from '../src/types'
 import { checkForUpdate, updateDepsFrom } from '../src/update'
 import { evaluate, manualSwitch, newState, settingsFrom, turnEnded, uiFrom } from '../src/switch'
@@ -39,7 +39,7 @@ export const register: Register = (on, options) => {
       await $.command.register({
         name: 'tagteam',
         description: 'Manage and switch Claude accounts',
-        argumentHint: '[status | add | remove | edit | switch | refresh | install] [label]',
+        argumentHint: '[status | add | remove | edit | switch | pin | unpin | refresh | install] [label]',
       })
     } catch (err) {
       $.ui.log(`tagteam: command registration failed: ${message(err)}`, { to: 'debug' })
@@ -74,11 +74,11 @@ export const register: Register = (on, options) => {
     let text: string
     try {
       const later = (accounts: Account[]) => refreshLater(io, (t) => $.ui.log(t, { to: 'debug' }), accounts)
-      text = await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root, openPane, later))
+      text = await runCommand(io, e.args, realDeps(confirm, switchTo, $.plugin.root, openPane, later, () => $.session.cwd()))
     } catch (err) {
       text = `tagteam: ${message(err)}`
     }
-    if (['add', 'edit', 'remove', 'delete', 'refresh'].includes(parseArgs(e.args).sub)) {
+    if (['add', 'edit', 'remove', 'delete', 'refresh', 'pin', 'unpin'].includes(parseArgs(e.args).sub)) {
       await refreshStatus(io, { status: (t) => $.ui.status(t) }, settings).catch(() => undefined)
       redraw($)
     }
@@ -95,7 +95,7 @@ export const register: Register = (on, options) => {
     })
     try {
       stamp = await stateStamp(io)
-      return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold), e.props.bodyColumns, settingsLine(settings))
+      return drawPane($.ui.resolve(e), await paneRows(io, await io.now(), settings.threshold, Object.keys(await readPins(io)).length ? await $.session.cwd() : undefined), e.props.bodyColumns, settingsLine(settings))
     } catch (err) {
       $.ui.log(`tagteam: dashboard failed: ${message(err)}`, { to: 'debug' })
       return drawError($.ui.resolve(e), message(err), e.props.bodyColumns)
