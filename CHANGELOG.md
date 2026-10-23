@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/jpo-oss/tagteam/compare/v0.3.3...v0.4.0) (2026-10-23)
+
+
+### Features
+
+* pin folders to accounts ([#26](https://github.com/jpo-oss/tagteam/issues/26)) ([062be26](https://github.com/jpo-oss/tagteam/commit/062be264358fb03c9251773a2349c5649f273698))
+* prefer the account whose weekly limit resets soonest ([#25](https://github.com/jpo-oss/tagteam/issues/25)) ([5e6026b](https://github.com/jpo-oss/tagteam/commit/5e6026b7f1329c61e67944a3c8adcc1f547077ab))
+
+
+### Bug Fixes
+
+* stay open when the current account resets first ([#23](https://github.com/jpo-oss/tagteam/issues/23)) ([91076c0](https://github.com/jpo-oss/tagteam/commit/91076c0215fe2dee49ef8f2b3409747f6b70e803))
+
 ## [0.3.3](https://github.com/jpo-oss/tagteam/compare/v0.3.2...v0.3.3) (2026-10-20)
 
 
