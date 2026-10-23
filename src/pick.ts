@@ -6,6 +6,14 @@ const level = (ws: readonly Window[], now: number) =>
 
 const lastRead = (ws: readonly Window[]) => ws.reduce((m, w) => Math.max(m, w.readAt), -Infinity)
 
+const weeklyReset = (ws: readonly Window[], now: number) => {
+  const t = Date.parse(ws.find((w) => w.kind === 'seven_day')?.resetsAt ?? '')
+  return t > now ? t : Infinity
+}
+
+// Within 10 points, spend the account whose weekly allowance is about to be thrown away.
+const band = (level: number) => Math.floor(level / 10)
+
 export function pickTarget(
   accounts: readonly Account[],
   usage: Readonly<Record<string, Usage>>,
@@ -17,13 +25,15 @@ export function pickTarget(
     .filter((a) => !a.excluded && !a.needsSignIn)
     .map((a) => {
       const ws = Object.values(usage[a.accountUuid]?.windows ?? {})
-      return { a, ws, level: level(ws, now), read: lastRead(ws) }
+      return { a, ws, level: level(ws, now), read: lastRead(ws), weekly: weeklyReset(ws, now) }
     })
 
   const open = rows
     .filter((r) => r.a.label !== currentLabel && r.level < threshold)
     .sort(
       (x, y) =>
+        band(x.level) - band(y.level) ||
+        (x.weekly < y.weekly ? -1 : x.weekly > y.weekly ? 1 : 0) ||
         x.level - y.level ||
         Number(!x.ws.length) - Number(!y.ws.length) ||
         x.a.order - y.a.order ||

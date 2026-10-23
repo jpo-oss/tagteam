@@ -39,6 +39,23 @@ test('ties go to order, then oldest reading', () => {
     .toEqual({ kind: 'switch', label: 'c' })
 })
 
+test('within 10 points the sooner weekly reset wins, beyond that the lower level does', () => {
+  const accounts = [acct('a'), acct('b'), acct('c')]
+  const close = byUuid(use('b', ['seven_day', 21, now + 6 * 24 * H]), use('c', ['seven_day', 28, now + 2 * H]))
+  expect(pickTarget(accounts, close, 'a', 95, now)).toEqual({ kind: 'switch', label: 'c' })
+  const far = byUuid(use('b', ['seven_day', 21, now + 6 * 24 * H]), use('c', ['seven_day', 31, now + 2 * H]))
+  expect(pickTarget(accounts, far, 'a', 95, now)).toEqual({ kind: 'switch', label: 'b' })
+})
+
+test('a weekly reset already past or missing never counts as sooner', () => {
+  const u = byUuid(
+    use('b', ['seven_day', 0, now - H], ['five_hour', 22]),
+    use('c', ['five_hour', 24]),
+    use('d', ['seven_day', 25, now + 3 * 24 * H]),
+  )
+  expect(pickTarget([acct('a'), acct('b'), acct('c'), acct('d')], u, 'a', 95, now)).toEqual({ kind: 'switch', label: 'd' })
+})
+
 test('skips excluded, needsSignIn and current', () => {
   const u = byUuid(use('b', ['five_hour', 1]), use('c', ['five_hour', 1]), use('d', ['five_hour', 50]))
   const r = pickTarget(
