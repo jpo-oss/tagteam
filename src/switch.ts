@@ -56,10 +56,7 @@ export function settingsFrom(o: PluginOptions): Settings {
 
 export function handover(from: string | undefined, to: string, reason: string): string {
   const src = from ? `the ${from} account` : 'your previous account'
-  const moved = from === to
-    ? `This session was paused on ${src} because ${reason}, and resumed there once the limit reset.`
-    : `This session was closed on ${src} and reopened on the ${to} account because ${reason}.`
-  return `${moved} Before anything else, check every subagent, workflow and background task that was running when it closed. ` +
+  return `This session was closed on ${src} and reopened on the ${to} account because ${reason}. Before anything else, check every subagent, workflow and background task that was running when it closed. ` +
     'Resume any unfinished subagent or workflow with its history, and re-run any background task that died. ' +
     'Commands a resumed subagent was waiting on died too: re-run them without asking. ' +
     'If a subagent cannot continue, start it again fresh with the same instructions, without asking. ' +
@@ -202,6 +199,10 @@ export async function evaluate(ctx: SwitchCtx, now: number): Promise<void> {
   const pick = pickTarget(accounts, usage, current.label, settings.threshold, now)
   if (pick.kind === 'none') {
     if (once(state, `none:${episode}`)) await ui.notify(`${said} and no account is available to switch to.`)
+    return
+  }
+  if (pick.kind === 'wait' && pick.label === current.label) {
+    if (once(state, `stay:${episode}`)) await ui.notify(`${said} and every other account is limited too. ${current.label} resets first, ${whenAt(pick.resumeAt, now)}, so this session stays open.`)
     return
   }
   const target = accounts.find((a) => a.label === pick.label)

@@ -310,24 +310,39 @@ test('a session does not follow an excluded active account', async () => {
 test('a resume time on another day shows the weekday', async () => {
   const io = await setup()
   const far = Date.now() + 3 * 86400_000
-  await setPct(io, 'ua', 96, new Date(far).toISOString())
-  await setPct(io, 'ub', 99, new Date(far + 3600_000).toISOString())
+  await setPct(io, 'ua', 96, new Date(far + 3600_000).toISOString())
+  await setPct(io, 'ub', 99, new Date(far).toISOString())
   const { ui, calls } = fakeUi()
   await evaluate(ctx(io, ui), Date.now())
-  expect(calls.toasts[0]).toMatch(/resumes on a at (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
+  expect(calls.toasts[0]).toMatch(/resumes on b at (Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d/)
 })
 
 test('when every account is limited it waits for the soonest reset', async () => {
   const io = await setup()
   const later = new Date(Date.now() + 7200_000).toISOString()
-  await setPct(io, 'ub', 99, later)
+  await setPct(io, 'ua', 99, later)
+  await setPct(io, 'ub', 99)
   const { ui, calls } = fakeUi()
   await evaluate(ctx(io, ui), Date.now())
-  expect(calls.toasts[0]).toMatch(/resumes on a in (1h|59m)$/)
+  expect(calls.toasts[0]).toMatch(/resumes on b in (1h|59m)$/)
   const r = await request(io)
-  expect(r?.target_label).toBe('a')
-  expect(r?.target_dir).toBe('/t/a')
+  expect(r?.target_label).toBe('b')
+  expect(r?.target_dir).toBe('/t/b')
   expect(r?.resume_at).toBe(String(Math.ceil(Date.parse(RESET) / 1000)))
+})
+
+test('when every account is limited and this one resets first, it stays open and says so once', async () => {
+  const io = await setup()
+  await setPct(io, 'ub', 99, new Date(Date.now() + 7200_000).toISOString())
+  const { ui, calls } = fakeUi()
+  const c = ctx(io, ui)
+  await evaluate(c, Date.now())
+  await evaluate(c, Date.now())
+  expect(await request(io)).toBeUndefined()
+  expect(await readActive(io)).toBe('a')
+  expect(calls.exits).toBe(0)
+  expect(calls.notes).toHaveLength(1)
+  expect(calls.notes[0]).toMatch(/a resets first, in (1h|59m), so this session stays open\.$/)
 })
 
 test('with no account to go to it notifies once and stays', async () => {
@@ -353,7 +368,6 @@ test('handover names both accounts and the reason, resumes only what was running
   expect(text).toMatch(/waiting on died too: re-run them without asking/)
   expect(text).toMatch(/start it again fresh with the same instructions, without asking/)
   expect(text).not.toMatch(/[\u2013\u2014\n]/)
-  expect(handover('a', 'a', 'x')).not.toContain('reopened')
   expect(handover(undefined, 'b', 'x')).toContain('closed on your previous account and reopened on the b account')
 })
 
