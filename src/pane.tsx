@@ -52,7 +52,7 @@ export async function paneRows(io: Io, now: number, threshold: number): Promise<
       label: a.label, email: a.email, active: isActive, state, windows,
       today: short(total(u.tokensByDay[days[0]!])),
       week: short(days.reduce((s, d) => s + total(u.tokensByDay[d]), 0)),
-      early: last ? `early, ${when(last, now)}` : undefined,
+      early: last ? when(last, now) : undefined,
     })
   }
   return { rows, unmanaged: session !== undefined && !accounts.some((a) => a.accountUuid === session) }

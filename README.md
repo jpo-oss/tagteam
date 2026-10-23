@@ -101,7 +101,7 @@ Accounts and state live in `~/.claude-accounts`, or `$TAGTEAM_HOME` if you set i
 4. The launcher sees the request, closes Claude (stopping it if it hangs on the limit menu), and starts it again on the new account with `--resume`. A session with no conversation yet starts fresh instead.
 5. The first message after the restart tells Claude what happened and to pick up any subagents, workflows or background work that were cut off, without stopping to ask.
 
-If every account is limited, the launcher waits until the soonest reset and resumes there. More detail in [docs/architecture.md](docs/architecture.md).
+If every account is limited, the launcher waits for the soonest reset and resumes there. When that's the account you're already on, the session stays open instead. More detail in [docs/architecture.md](docs/architecture.md).
 
 ## Limitations
 
